@@ -75,8 +75,10 @@ class Ha_gaode extends HTMLElement {
       `;
       this.content = this.querySelector("#dxMapDiv")
       this._loadMap(hass)
+      this._drawOnce(hass)
     }
     this._drawWindow(hass)
+    this._drawMap(hass)
   }
   _drawWindow(hass) {
     let that = this;
@@ -93,7 +95,6 @@ class Ha_gaode extends HTMLElement {
     for(let zoneKey in this.zoneObj) {
       const zone = this.zoneObj[zoneKey]
       const { gcj02Longitude, gcj02Latitude, friendly_name, radius } = zone.attributes
-
       var trE = document.createElement(`tr`)
       var key = zoneKey.replaceAll('\.', '')
       trE.innerHTML = `
@@ -113,14 +114,15 @@ class Ha_gaode extends HTMLElement {
       zoneKeyEdit.addEventListener('click', () => {
         // if (this.zoneEdit) { this._hideZoneForm }
 
-        var entityId = zoneKeyEdit.getAttribute('dx_entity_id')
+        const entityId = zoneKeyEdit.getAttribute('dx_entity_id')
         const zone = this.zoneObj[entityId]
         const { friendly_name, gcj02Longitude, gcj02Latitude, radius } = zone.attributes
 
         this._showZoneForm({
           position: [gcj02Longitude, gcj02Latitude],
           friendly_name: friendly_name,
-          entity_id: entityId
+          entity_id: entityId,
+          radius
         })
 
         var zomeForm = this._getZoneForm()
@@ -130,47 +132,7 @@ class Ha_gaode extends HTMLElement {
         zomeForm.radius_input.value = radius
       });
     }
-    // 位置
-    // let addZoneButton = this.querySelector("#addZoneButton")
-    // addZoneButton.addEventListener('click', () => {
-    //   let zoneSet = this.querySelector("#zoneSet")
-    //   zoneSet.style = "display: block"
-    // });
-    let zoneSetCancel = this.querySelector("#zoneSetCancel")
-    zoneSetCancel.addEventListener('click', () => {
-      this._hideZoneForm()
 
-    });
-    let zoneSetCommit = this.querySelector("#zoneSetCommit")
-    zoneSetCommit.addEventListener('click', () => {
-      let zoneSet = this.querySelector("#zoneSet")
-      var valueObj = this._getZoneFormValues()
-      const zone = this.zoneObj[valueObj.entity_id]
-      hass.callApi('post', 'states/' + valueObj.entity_id, {
-        state: 0,
-        attributes: {
-          ...zone.attributes,
-          ...valueObj
-        }
-      })
-      this._hideZoneForm()
-    });
-    let radiusInput = this.querySelector("#radius_input")
-    radiusInput.addEventListener('change', (e) => {
-      this.editMarkerCircle.setRadius(radiusInput.value)
-    })
-    let containerMin = this.querySelector("#containerMin")
-    let containerMax = this.querySelector("#containerMax")
-    let minDiv = this.querySelector("#minDiv")
-    let maxDiv = this.querySelector("#maxDiv")
-    containerMin.addEventListener('click', (e) => {
-      minDiv.style.display = 'block'
-      maxDiv.style.display = 'none'
-    })
-    containerMax.addEventListener('click', (e) => {
-      maxDiv.style.display = 'block'
-      minDiv.style.display = 'none'
-    })
     // GPS
     let gpsList = this.querySelector("#gpsList")
     gpsList.innerHTML = ''
@@ -190,6 +152,43 @@ class Ha_gaode extends HTMLElement {
         this.amap.setCenter([gcj02Longitude, gcj02Latitude])
       })
     }
+  }
+  _drawOnce(hass) {
+    let zoneSetCancel = this.querySelector("#zoneSetCancel")
+    zoneSetCancel.addEventListener('click', () => {
+      this._hideZoneForm()
+    });
+
+    let zoneSetCommit = this.querySelector("#zoneSetCommit")
+    zoneSetCommit.addEventListener('click', () => {
+      var valueObj = this._getZoneFormValues()
+      const zone = this.zoneObj[valueObj.entity_id]
+      hass.callApi('post', 'states/' + valueObj.entity_id, {
+        state: 0,
+        attributes: {
+          ...zone.attributes,
+          ...valueObj
+        }
+      })
+      this._hideZoneForm()
+    });
+
+    let radiusInput = this.querySelector("#radius_input")
+    radiusInput.addEventListener('change', (e) => {
+      this.editMarkerCircle.setRadius(radiusInput.value)
+    })
+    let containerMin = this.querySelector("#containerMin")
+    let containerMax = this.querySelector("#containerMax")
+    let minDiv = this.querySelector("#minDiv")
+    let maxDiv = this.querySelector("#maxDiv")
+    containerMin.addEventListener('click', (e) => {
+      minDiv.style.display = 'block'
+      maxDiv.style.display = 'none'
+    })
+    containerMax.addEventListener('click', (e) => {
+      maxDiv.style.display = 'block'
+      minDiv.style.display = 'none'
+    })
   }
   _showZoneForm(obj) {
     this.amap.setCenter(obj.position)
@@ -227,12 +226,20 @@ class Ha_gaode extends HTMLElement {
     })
     this.editZoneLayer.add(this.editMarker)
     this.editZoneLayer.show()
+
     for (let k in this.zoneMarkerCircleObj) {
       this.zoneMarkerCircleObj[k].hide()
     }
-    let thisCircle = this.zoneMarkerCircleObj[obj.entity_id]
-    this.editMarkerCircle = thisCircle
-    thisCircle.show()
+    this.editMarkerCircle = new AMap.Circle({
+      map: this.amap,
+      center: obj.position,
+      radius: obj.radius,
+      fillOpacity: 0.3,
+      strokeColor: '#14b4fc',
+      strokeOpacity: 0.3,
+      fillColor: '#14b4fc',
+      strokeWeight: 0
+    })
   }
   _hideZoneForm() {
     let zoneSet = this.querySelector("#zoneSet")
@@ -244,6 +251,7 @@ class Ha_gaode extends HTMLElement {
     this.editMarker = null
     this.editZoneLayer.hide()
     this.alayer.show()
+    this.editMarkerCircle.setMap(null)
     this.editMarkerCircle = null
     for (let k in this.zoneMarkerCircleObj) {
       this.zoneMarkerCircleObj[k].show()
@@ -380,12 +388,10 @@ class Ha_gaode extends HTMLElement {
     }
   }
   _drawMap() {
+    if (!this.amap) return
     let that = this;
     // const { hass, that } = config
      // 设置markder
-    console.log(that.zoneObj)
-    console.log(that.zoneMarkerObj)
-
     for(let zoneKey in that.zoneObj) {
         let zoneMarker = that.zoneMarkerObj[zoneKey]
         let zone = that.zoneObj[zoneKey]
@@ -440,6 +446,7 @@ class Ha_gaode extends HTMLElement {
             that.zoneMarkerCircleObj[zoneKey] = b
         } else {
             zoneMarkerCircle.setCenter([gcj02Longitude, gcj02Latitude])
+            zoneMarkerCircle.setRadius(radius)
         }
       }
 
@@ -514,15 +521,17 @@ class Ha_gaode extends HTMLElement {
         });
 
         var layer = new AMap.LabelsLayer({
-            zooms: [3, 20],
-            zIndex: 1000,
-            animation: false,
+          zooms: [3, 20],
+          zIndex: 1000,
+          animation: false,
+          collision: false
         });
         var editZoneLayer = new AMap.LabelsLayer({
-            zooms: [3, 20],
-            zIndex: 1000,
-            animation: false,
-            visible: false
+          zooms: [3, 20],
+          zIndex: 1000,
+          animation: false,
+          visible: false,
+          collision: false
         });
         this.amap.add(layer);
         this.amap.add(editZoneLayer);
