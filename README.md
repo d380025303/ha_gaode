@@ -11,8 +11,6 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://github.com/hacs/integration)
 
-[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-
 基于高德地图API实现的Home Assistant前端卡片
 
 + 支持修改地点位置，修改地点范围（你将不用烦恼GPS与国内经纬度偏差）
