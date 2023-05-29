@@ -1,6 +1,6 @@
 import "https://webapi.amap.com/loader.js"
 
-class DxGaodeMapCard extends HTMLElement {
+class Ha_gaode extends HTMLElement {
   mapLoading = false
   zoneEdit = false
   editMarker = null
@@ -575,4 +575,4 @@ class DxGaodeMapCard extends HTMLElement {
   }
 }
 
-customElements.define("dx-gaode-map-card", DxGaodeMapCard);
+customElements.define("dx-gaode-map-card", Ha_gaode);

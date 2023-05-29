@@ -37,9 +37,9 @@ tip: 编辑后经纬度可直接点击地图设置
 2. 参见`手动安装`第三步及以后
 
 ## 手动安装
-1. 下载 `dx-gaode-map-card.js`
-1. 复制到 `\config\www\ha_gaode\dx-gaode-map-card.js`
-1. 添加资源
+1. 下载 `ha_gaode.js`
+1. 复制到 `\config\www\ha_gaode\ha_gaode.js`
+1. 添加资源 `/loca/ha_gaode/ha_gaode.js`
    ![](3.jpg)
 1. 添加自定义卡片，使用以下配置：
     ```yaml
