@@ -1,5 +1,6 @@
 {
-  "name": "DxGaodeMapCard",
+  "name": "dxgaodemapcard",
   "render_readme": true,
+  "filename": "dx-gaode-map-card.js",
   "country": ["CN"]
 }

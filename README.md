@@ -9,7 +9,7 @@
 
 # Dx Gaode Map Card
 
-[![hacs_badge](https://img.shields.io/badge/HACS-Default-orange.svg)](https://github.com/custom-components/hacs)
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
 
 基于高德地图API实现的Home Assistant前端卡片
 
@@ -33,7 +33,8 @@ tip: 编辑后经纬度可直接点击地图设置
 
 
 ## HACS 安装
-搜索 ```DxGaodeMapCard```，点击安装即可
+1. HACS > 前端 > 浏览并下载存储库 > 搜索 ```dxgaodemapcard```，点击下载
+2. 参见`手动安装`第三步及以后
 
 ## 手动安装
 1. 下载 `dx-gaode-map-card.js`
