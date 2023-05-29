@@ -19,7 +19,7 @@ class Ha_gaode extends HTMLElement {
     this._handleHass(hass)
     if (!this.content) {
       this.innerHTML = `
-          <div class="dxAmap" style="height: 100%">
+          <div id="dxMapDiv" class="dxAmap" style="height: 100%">
             <div style="display: flex;height: 100%">
               <div style="height: 100%;width: 100%;margin: 0" id="mapContainer" class="mapContainer"></div>
               <div id="maxDiv" style="flex: 1;position: absolute;top: 200px; left: 100px;background-color: white;z-index: 5;padding: 8px">
@@ -73,6 +73,7 @@ class Ha_gaode extends HTMLElement {
             </div>
           </div>
       `;
+      this.content = this.querySelector("#dxMapDiv")
       this._loadMap(hass)
     }
     this._drawWindow(hass)
