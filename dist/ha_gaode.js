@@ -1,5 +1,18 @@
 import "https://webapi.amap.com/loader.js"
 
+const random_color = [
+  "#00ff00",
+  "#00ffff",
+  "#4a86e8",
+  "#0000ff",
+  "#9900ff",
+  "#ff00ff",
+  "#ff0000",
+  "#ff9900",
+  "#20124d",
+  "#660000",
+]
+
 const zone_icon = {
   type: 'image',
   image: 'https://a.amap.com/jsapi_demos/static/images/poi-marker.png',
@@ -46,6 +59,98 @@ const gps_test = {
   }
 }
 
+const init_html = `
+<div id="dxMapDiv" class="dxAmap" style="height: 100%">
+  <div style="display: flex;height: 100%">
+    <div style="height: 100%;width: 100%;" id="mapContainer" class="mapContainer"></div>
+    <div id="maxDiv" style="flex: 1;position: absolute;top: 200px; left: 100px;background-color: white;z-index: 5;padding: 8px">
+      <div style="display: flex;margin-bottom: 8px">
+        <button id="containerMin">最小化</button>
+      </div>
+
+      <div style="margin-bottom: 8px">
+        <div style="display: flex;align-items: center;">
+          <div style="margin-right: 8px">地图操作</div>
+          <div>您刚刚点击了坐标：<span id="click_ll_span" style="user-select: text;"></span></div>
+        </div>
+        <div>
+          地图搜索：<input type="text" id="map_search_input" name="map_search" >
+        </div>
+        <div style="display: flex;align-items: center;justify-content: start;">
+          <div style="display: flex;align-items: center;margin-right: 8px">
+            <input type="checkbox" id="satellite_input" name="satellite" >
+            <span>卫星</span>
+          </div>
+          <div style="display: flex;align-items: center;margin-right: 8px">
+            <input type="checkbox" id="roadnet_input" name="roadnet" >
+            <span>路网</span>
+          </div>
+          <div style="display: flex;align-items: center;margin-right: 8px">
+            <input type="checkbox" id="traffic_input" name="traffic" >
+            <span>实时交通</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="zoneDiv">
+        <div style="flex: 1">Zone 位置列表</div>
+        <table border="1" id="zoneContainer">
+
+        </table>
+
+        <div style="display: none" id="zoneSet">
+          <div>位置设置</div>
+          <div>
+            <span>id：</span>
+            <input id="entity_id_post_input" type="text" name="entity_id_post" />
+          </div>
+          <div>
+            <span>展示名称：</span>
+            <input id="friendly_name_input" type="text" name="friendly_name" />
+          </div>
+          <div>
+            <span>经纬度：</span>
+            <input id="ll_input" type="text" name="ll" />
+          </div>
+          <div>
+            <span>范围：</span>
+            <input id="radius_input" type="text" name="radius" />
+          </div>
+          <div>
+            <button id="zoneSetCancel">取消</button>
+            <button id="zoneSetCommit">提交</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="gpsDiv" style="margin-bottom: 8px">
+        <div style="flex: 1">GPS 位置列表</div>
+        <table border="1" id="gpsList">
+
+        </table>
+        <div style="display: none" id="gps_set">
+          <div>GPS操作</div>
+          <div style="display: none">
+            <input id="gps_entity_id_post_input" type="text" name="gps_entity_id_post" />
+          </div>
+          <div>
+            <span>名称：</span>
+            <span id="gps_friendly_name_div"></span>
+          </div>
+          <div>
+            <button id="gps_set_cancel">取消</button>
+            <button id="gps_set_trajectory">路径轨迹</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="minDiv" style="flex: 1;position: absolute;top: 200px; left: 100px;background-color: white;z-index: 5;padding: 8px;display: none">
+        <button id="containerMax">还原</button>
+    </div>
+  </div>
+</div>
+`
+
 class Ha_gaode extends HTMLElement {
   mapLoading = false
   zoneEdit = false
@@ -64,78 +169,11 @@ class Ha_gaode extends HTMLElement {
   carPassedPolyline = null
   set hass(hass) {
     console.log(hass)
-    console.log(this.content)
     let that = this
-    // // Initialize the content if it's not there yet.
+    // Initialize the content if it's not there yet.
     this._handleHass(hass)
     if (!this.content) {
-      this.innerHTML = `
-          <div id="dxMapDiv" class="dxAmap" style="height: 100%">
-            <div style="display: flex;height: 100%">
-              <div style="height: 100%;width: 100%;" id="mapContainer" class="mapContainer"></div>
-              <div id="maxDiv" style="flex: 1;position: absolute;top: 200px; left: 100px;background-color: white;z-index: 5;padding: 8px">
-                <div style="display: flex;margin-bottom: 8px">
-                  <button id="containerMin">最小化</button>
-                </div>
-
-                <div id="zoneDiv">
-                  <div style="flex: 1">Zone 位置列表</div>
-                  <table border="1" id="zoneContainer">
-
-                  </table>
-
-                  <div style="display: none" id="zoneSet">
-                    <div>位置设置</div>
-                    <div>
-                      <span>id：</span>
-                      <input id="entity_id_post_input" type="text" name="entity_id_post" />
-                    </div>
-                    <div>
-                      <span>展示名称：</span>
-                      <input id="friendly_name_input" type="text" name="friendly_name" />
-                    </div>
-                    <div>
-                      <span>经纬度：</span>
-                      <input id="ll_input" type="text" name="ll" />
-                    </div>
-                    <div>
-                      <span>范围：</span>
-                      <input id="radius_input" type="text" name="radius" />
-                    </div>
-                    <div>
-                      <button id="zoneSetCancel">取消</button>
-                      <button id="zoneSetCommit">提交</button>
-                    </div>
-                  </div>
-                </div>
-
-                <div id="gpsDiv">
-                  <div style="flex: 1">GPS 位置列表</div>
-                  <table border="1" id="gpsList">
-
-                  </table>
-                  <div style="display: none" id="gps_set">
-                    <div>GPS操作</div>
-                    <div style="display: none">
-                      <input id="gps_entity_id_post_input" type="text" name="gps_entity_id_post" />
-                    </div>
-                    <div>
-                      <span>名称：</span>
-                      <span id="gps_friendly_name_div"></span>
-                    </div>
-                    <div>
-                      <button id="gps_set_cancel">取消</button>
-                      <button id="gps_set_trajectory">路径轨迹</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div id="minDiv" style="flex: 1;position: absolute;top: 200px; left: 100px;background-color: white;z-index: 5;padding: 8px;display: none">
-                  <button id="containerMax">还原</button>
-              </div>
-            </div>
-          </div>
-      `;
+      this.innerHTML = init_html;
       this.content = this.querySelector("#dxMapDiv")
       that._loadMap(hass)
       that._drawOnce(hass)
@@ -251,9 +289,9 @@ class Ha_gaode extends HTMLElement {
     }
   }
   _closeTrajectory() {
-    this.carMarker.hide()
-    this.carPolyline.hide()
-    this.carPassedPolyline.hide()
+      this.carMarker.hide()
+      this.carPolyline.hide()
+      this.carPassedPolyline.hide()
   }
   _drawOnce(hass) {
     let zoneSetCancel = this.querySelector("#zoneSetCancel")
@@ -305,6 +343,37 @@ class Ha_gaode extends HTMLElement {
       }
       this._toTrajectory(arr)
     });
+    let satellite_input = this.querySelector("#satellite_input")
+    satellite_input.addEventListener('change', (e) => {
+      if (satellite_input.checked) {
+        this.amap.add(this.satelliteLayer)
+      } else {
+        this.amap.remove(this.satelliteLayer)
+      }
+    });
+    let roadnet_input = this.querySelector("#roadnet_input")
+    roadnet_input.addEventListener('change', (e) => {
+      if (roadnet_input.checked) {
+        this.amap.add(this.roadnetLayer)
+      } else {
+        this.amap.remove(this.roadnetLayer)
+      }
+    });
+    let traffic_input = this.querySelector("#traffic_input")
+    traffic_input.addEventListener('change', (e) => {
+      if (traffic_input.checked) {
+        this.amap.add(this.trafficLayer)
+      } else {
+        this.amap.remove(this.trafficLayer)
+      }
+    });
+    // map_search_input.addEventListener('change', (e) => {
+      // if (traffic_input.checked) {
+      //   this.amap.add(this.trafficLayer)
+      // } else {
+      //   this.amap.remove(this.trafficLayer)
+      // }
+    // });
   }
   _showGpsForm(obj) {
     this.amap.setCenter(obj.position)
@@ -319,32 +388,32 @@ class Ha_gaode extends HTMLElement {
     this.zoneEdit = true
     this.alayer.hide()
     this.editMarker = new AMap.LabelMarker({
-      name: obj.friendly_name,
-      position: obj.position,
-      zooms: [3, 20],
-      opacity: 1,
-      icon: {
-        type: 'image',
-        image: 'https://a.amap.com/jsapi_demos/static/images/poi-marker.png',
-        clipOrigin: [194, 92],
-        clipSize: [50, 68],
-        size: [25, 34],
-        anchor: 'bottom-center',
-        angel: 0,
-        retina: true
-      },
-      text: {
-        content: obj.friendly_name,
-        direction: 'top',
-        offset: [0, -5],
-        style: {
-          fontSize: 13,
-          fontWeight: 'normal',
-          fillColor: '#fff',
-          padding: '2, 5',
-          backgroundColor: '#22884f'
+        name: obj.friendly_name,
+        position: obj.position,
+        zooms: [3, 20],
+        opacity: 1,
+        icon: {
+            type: 'image',
+            image: 'https://a.amap.com/jsapi_demos/static/images/poi-marker.png',
+            clipOrigin: [194, 92],
+            clipSize: [50, 68],
+            size: [25, 34],
+            anchor: 'bottom-center',
+            angel: 0,
+            retina: true
+        },
+        text: {
+            content: obj.friendly_name,
+            direction: 'top',
+            offset: [0, -5],
+            style: {
+              fontSize: 13,
+              fontWeight: 'normal',
+              fillColor: '#fff',
+              padding: '2, 5',
+              backgroundColor: '#22884f'
+            }
         }
-      }
     })
     this.editZoneLayer.add(this.editMarker)
     this.editZoneLayer.show()
@@ -487,7 +556,6 @@ class Ha_gaode extends HTMLElement {
       }
       let that = this
       console.log("_calcGps-gpsList->", that.gpsList)
-
       AMap.convertFrom(that.gpsList, 'gps', function (status, result) {
         console.log("AMap convertFrom", result)
         if (result.info === 'ok') {
@@ -525,6 +593,7 @@ class Ha_gaode extends HTMLElement {
             f(config)
           }
         }
+        that.gpsList = []
       });
     } else if (this.amap) {
       if (f) {
@@ -536,76 +605,172 @@ class Ha_gaode extends HTMLElement {
     if (!this.amap) return
     let that = this;
     // const { hass, that } = config
-    // 设置markder
+     // 设置markder
     for(let zoneKey in that.zoneObj) {
-      let zoneMarker = that.zoneMarkerObj[zoneKey]
-      let zone = that.zoneObj[zoneKey]
-      let { gcj02_longitude, gcj02_latitude, friendly_name, radius } = zone.attributes
-      if (!zoneMarker) {
-        var a = new AMap.LabelMarker({
-          name: friendly_name,
-          position: [gcj02_longitude, gcj02_latitude],
-          zooms: [3, 20],
-          opacity: 1,
-          icon: zone_icon,
-          text: {
-            ...zone_text,
-            content: friendly_name,
-          }
-        })
-        that.zoneMarkerObj[zoneKey] = a
-        that.alayer.add(a);
-      } else {
-        zoneMarker.setPosition([gcj02_longitude, gcj02_latitude])
-        zoneMarker.setText({...zone_text, content: friendly_name})
+        let zoneMarker = that.zoneMarkerObj[zoneKey]
+        let zone = that.zoneObj[zoneKey]
+        let { gcj02_longitude, gcj02_latitude, friendly_name, radius } = zone.attributes
+        if (!zoneMarker) {
+            var a = new AMap.LabelMarker({
+              name: friendly_name,
+              position: [gcj02_longitude, gcj02_latitude],
+              zooms: [3, 20],
+              opacity: 1,
+              icon: zone_icon,
+              text: {
+                ...zone_text,
+                content: friendly_name,
+              }
+            })
+            that.zoneMarkerObj[zoneKey] = a
+            that.alayer.add(a);
+        } else {
+          zoneMarker.setPosition([gcj02_longitude, gcj02_latitude])
+          zoneMarker.setText({...zone_text, content: friendly_name})
+        }
+
+        let zoneMarkerCircle = that.zoneMarkerCircleObj[zoneKey]
+        if (!zoneMarkerCircle) {
+            var b = new AMap.Circle({
+              map: that.amap,
+              center: [gcj02_longitude, gcj02_latitude],
+              radius,
+              fillOpacity: 0.3,
+              strokeColor: '#14b4fc',
+              strokeOpacity: 0.3,
+              fillColor: '#14b4fc',
+              strokeWeight: 0
+            })
+            that.zoneMarkerCircleObj[zoneKey] = b
+        } else {
+            zoneMarkerCircle.setCenter([gcj02_longitude, gcj02_latitude])
+            zoneMarkerCircle.setRadius(radius)
+        }
       }
 
-      let zoneMarkerCircle = that.zoneMarkerCircleObj[zoneKey]
-      if (!zoneMarkerCircle) {
-        var b = new AMap.Circle({
-          map: that.amap,
-          center: [gcj02_longitude, gcj02_latitude],
-          radius,
-          fillOpacity: 0.3,
-          strokeColor: '#14b4fc',
-          strokeOpacity: 0.3,
-          fillColor: '#14b4fc',
-          strokeWeight: 0
-        })
-        that.zoneMarkerCircleObj[zoneKey] = b
-      } else {
-        zoneMarkerCircle.setCenter([gcj02_longitude, gcj02_latitude])
-        zoneMarkerCircle.setRadius(radius)
+      for(let key in that.gpsObj) {
+        let gps = that.gpsObj[key]
+        let zoneMarker = that.zoneMarkerObj[key]
+        let { gcj02_longitude, gcj02_latitude, friendly_name } = gps.attributes
+
+        if (!zoneMarker) {
+            var a = new AMap.LabelMarker({
+              name: friendly_name,
+              position: [gcj02_longitude, gcj02_latitude],
+              zooms: [3, 20],
+              opacity: 1,
+              icon: gps_icon,
+              text: {
+                ...gps_test,
+                content: friendly_name
+              }
+            })
+            that.zoneMarkerObj[key] = a
+            that.alayer.add(a);
+        } else {
+          zoneMarker.setPosition([gcj02_longitude, gcj02_latitude])
+          zoneMarker.setText({...gps_test, content: friendly_name})
+        }
+
       }
-    }
+  }
+  _configMap(hass) {
+    const that = this;
+    let mapContainer = this.querySelector("#mapContainer");
+    if (mapContainer) {
+      this.amap = new AMap.Map(mapContainer, {
+        center: this._getCenter(hass),
+        zoom: 16,
+        resizeEnable: true,
+        animateEnable: false,
+        jogEnable: false
+      });
 
-    for(let key in that.gpsObj) {
-      let gps = that.gpsObj[key]
-      let zoneMarker = that.zoneMarkerObj[key]
-      let { gcj02_longitude, gcj02_latitude, friendly_name } = gps.attributes
+      const layer = new AMap.LabelsLayer({
+        zooms: [3, 20],
+        zIndex: 1000,
+        animation: false,
+        collision: false
+      });
+      const editZoneLayer = new AMap.LabelsLayer({
+        zooms: [3, 20],
+        zIndex: 1000,
+        animation: false,
+        visible: false,
+        collision: false
+      });
+      this.amap.add(layer);
+      this.amap.add(editZoneLayer);
 
-      if (!zoneMarker) {
-        var a = new AMap.LabelMarker({
-          name: friendly_name,
-          position: [gcj02_longitude, gcj02_latitude],
-          zooms: [3, 20],
-          opacity: 1,
-          icon: gps_icon,
-          text: {
-            ...gps_test,
-            content: friendly_name
-          }
+      this.satelliteLayer= new AMap.TileLayer.Satellite();
+      this.roadnetLayer = new AMap.TileLayer.RoadNet()
+      this.trafficLayer = new AMap.TileLayer.Traffic()
+
+      let map_search_input = this.querySelector("#map_search_input");
+      AMap.plugin('AMap.Autocomplete',function(){//异步加载插件
+        const auto = new AMap.Autocomplete({
+          input: map_search_input
+        });
+        auto.on('select', function (data) {
+          that.amap.setCenter(data.poi.location)
         })
-        that.zoneMarkerObj[key] = a
-        that.alayer.add(a);
-      } else {
-        zoneMarker.setPosition([gcj02_longitude, gcj02_latitude])
-        zoneMarker.setText({...gps_test, content: friendly_name})
+      });
+
+      // 轨迹
+      this.carMarker = new AMap.Marker({
+        map: this.amap,
+        visible: false,
+        icon: "https://webapi.amap.com/images/car.png",
+        offset: new AMap.Pixel(-26, -13),
+        autoRotation: true,
+        angle:-90,
+      })
+      this.carMarker.on('moving', function (e) {
+        that.carPassedPolyline.setPath(e.passedPath);
+      });
+      this.carPolyline = new AMap.Polyline({
+        map: this.amap,
+        showDir:true,
+        strokeColor: "#28F",
+        strokeWeight: 6,
+      });
+      this.carPolyline.hide()
+
+      this.carPassedPolyline = new AMap.Polyline({
+        map: this.amap,
+        strokeColor: "#AF5",  //线颜色
+        strokeWeight: 6,      //线宽
+      });
+      this.carPassedPolyline.hide()
+
+      this.alayer = layer
+      this.editZoneLayer = editZoneLayer
+
+      this.amap.on('click', function (e) {
+        const lng = e.lnglat.lng
+        const lat = e.lnglat.lat
+        if (that.zoneEdit) {
+          that.editMarker.setPosition([lng, lat])
+          that.editMarkerCircle.setCenter([lng, lat])
+          const llInput = that.querySelector("#ll_input")
+          llInput.value = lng + "," + lat
+        } else {
+          const click_ll_span = that.querySelector("#click_ll_span");
+          click_ll_span.innerHTML = lng + "," + lat
+          click_ll_span.style.color = random_color[Math.round(Math.random()*random_color.length - 1)]
+        }
+      })
+      var a = function() {
+        that._drawMap()
+        that._drawWindow(hass)
       }
 
+      this.mapLoading = false;
+      this._calcGps(a)
     }
   }
   _loadMap(hass) {
+    console.log("_loadMap...")
     let that = this
     if (this.mapLoading) {return}
 
@@ -617,6 +782,8 @@ class Ha_gaode extends HTMLElement {
       this.editZoneLayer = null
       this.zoneMarkerObj = {}
       this.zoneMarkerCircleObj = {}
+      this._configMap(hass)
+      return;
     }
     let config = this.config
     window._AMapSecurityConfig = {
@@ -625,81 +792,7 @@ class Ha_gaode extends HTMLElement {
     AMapLoader.load({
       key: config.gaode_key,       // 申请好的Web端开发者Key，首次调用 load 时必填
     }).then((AMap)=>{
-      let mapContainer = this.querySelector("#mapContainer");
-      if (mapContainer) {
-        this.amap = new AMap.Map(mapContainer, {
-          center: this._getCenter(hass),
-          zoom: 16,
-          resizeEnable: true,
-          animateEnable: false,
-          jogEnable: false
-        });
-
-        var layer = new AMap.LabelsLayer({
-          zooms: [3, 20],
-          zIndex: 1000,
-          animation: false,
-          collision: false
-        });
-        var editZoneLayer = new AMap.LabelsLayer({
-          zooms: [3, 20],
-          zIndex: 1000,
-          animation: false,
-          visible: false,
-          collision: false
-        });
-        this.amap.add(layer);
-        this.amap.add(editZoneLayer);
-
-        // 轨迹
-        this.carMarker = new AMap.Marker({
-          map: this.amap,
-          visible: false,
-          icon: "https://webapi.amap.com/images/car.png",
-          offset: new AMap.Pixel(-26, -13),
-          autoRotation: true,
-          angle:-90,
-        })
-        this.carMarker.on('moving', function (e) {
-          that.carPassedPolyline.setPath(e.passedPath);
-        });
-        this.carPolyline = new AMap.Polyline({
-          map: this.amap,
-          showDir:true,
-          strokeColor: "#28F",
-          strokeWeight: 6,
-        });
-        this.carPolyline.hide()
-
-        this.carPassedPolyline = new AMap.Polyline({
-          map: this.amap,
-          strokeColor: "#AF5",  //线颜色
-          strokeWeight: 6,      //线宽
-        });
-        this.carPassedPolyline.hide()
-
-        this.alayer = layer
-        this.editZoneLayer = editZoneLayer
-
-        this.amap.on('click', function(e) {
-          if (that.zoneEdit) {
-            let lng = e.lnglat.lng
-            let lat = e.lnglat.lat
-
-            that.editMarker.setPosition([lng, lat])
-            that.editMarkerCircle.setCenter([lng, lat])
-            var llInput = that.querySelector("#ll_input")
-            llInput.value = lng + "," + lat
-          }
-        })
-        var a = function() {
-          that._drawMap()
-          that._drawWindow(hass)
-        }
-
-        this.mapLoading = false;
-        this._calcGps(a)
-      }
+      this._configMap(hass)
     }).catch((e)=>{
       console.error(e);  //加载错误提示
     });
