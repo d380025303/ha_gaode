@@ -74,20 +74,3 @@ tips: 高德Key，安全密钥 请前往https://console.amap.com/dev/key/app 申
 | gaode_key_security_code | string | **必选** | 高德安全秘钥 
 | center | entity_id | 可选 | 初始化默认中心位置
 
-## 详细说明
-GPSLogger 通过 [ha_gaode_server](https://github.com/d380025303/ha_gaode_server) 获得了一些增强属性
-![](7.jpg)
-
-- gcj02_longitude: 高德的经度
-- gcj02_latitude: 高德的纬度
-- dx_state: 设备当前状态
-```text
-dx_unknown: 未知(一般不会出现)
-dx_in_home: "我的家"实体范围内
-dx_in_zone: 在某个zone实体范围内
-dx_out: 不在任何zone范围内
-```
-- dx_pre_state: 设备前一个状态, 状态值同 ```dx_state```
-- dx_state_entity_id: 当```dx_state```为```dx_in_zone```时, zone的值
-- dx_distance: 当进入范围内, 距离中心的距离, 如果不在范围内, 值为 -1
-- dx_record_datetime: GPSLogger上报时间
