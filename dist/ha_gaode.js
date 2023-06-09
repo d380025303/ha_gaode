@@ -1,5 +1,13 @@
 import "https://webapi.amap.com/loader.js"
 
+const VERSION = "3.0"
+const CONFIG_DEVICE_TRACKER_INCLUDE = 'device_tracker_include'
+const CONFIG_GAODE_KEY = 'gaode_key'
+const CONFIG_GAODE_KEY_SECURITY_CODE = 'gaode_key_security_code'
+const CONFIG_CENTER = 'center'
+const CONFIG_DEFAULT_TRA_TIME = 'default_tra_time'
+
+
 const random_color = [
   "#00ff00",
   "#00ffff",
@@ -60,10 +68,17 @@ const gps_test = {
 }
 
 const init_html = `
+<style>
+   .dxAmap {
+    .kanban {
+      color: black;
+    }
+   }
+</style>
 <div id="dxMapDiv" class="dxAmap" style="height: 100%">
   <div style="display: flex;height: 100%">
     <div style="height: 100%;width: 100%;" id="mapContainer" class="mapContainer"></div>
-    <div id="maxDiv" style="flex: 1;position: absolute;top: 200px; left: 100px;background-color: white;z-index: 5;padding: 8px">
+    <div id="maxDiv" class="kanban" style="flex: 1;position: absolute;top: 56px; left: 0px;background-color: white;z-index: 5;padding: 8px">
       <div style="display: flex;margin-bottom: 8px">
         <button id="containerMin">最小化</button>
       </div>
@@ -92,31 +107,31 @@ const init_html = `
         </div>
       </div>
 
-      <div id="zoneDiv">
+      <div id="zoneDiv" >
         <div style="flex: 1">Zone 位置列表</div>
         <table border="1" id="zoneContainer">
 
         </table>
 
-        <div style="display: none" id="zoneSet">
-          <div>位置设置</div>
-          <div>
+        <div style="display: none;margin-bottom: 8px;" id="zoneSet">
+          <div style="margin-bottom: 4px;">位置设置</div>
+          <div style="margin-bottom: 4px;">
             <span>id：</span>
-            <input id="entity_id_post_input" type="text" name="entity_id_post" />
+            <input disabled="true" id="entity_id_post_input" type="text" name="entity_id_post" />
           </div>
-          <div>
+          <div style="margin-bottom: 4px;">
             <span>展示名称：</span>
             <input id="friendly_name_input" type="text" name="friendly_name" />
           </div>
-          <div>
+          <div style="margin-bottom: 4px;">
             <span>经纬度：</span>
             <input id="ll_input" type="text" name="ll" />
           </div>
-          <div>
+          <div style="margin-bottom: 4px;">
             <span>范围：</span>
             <input id="radius_input" type="text" name="radius" />
           </div>
-          <div>
+          <div style="margin-bottom: 4px;">
             <button id="zoneSetCancel">取消</button>
             <button id="zoneSetCommit">提交</button>
           </div>
@@ -125,26 +140,33 @@ const init_html = `
 
       <div id="gpsDiv" style="margin-bottom: 8px">
         <div style="flex: 1">GPS 位置列表</div>
-        <table border="1" id="gpsList">
+        <table style="margin-bottom: 8px" border="1" id="gpsList">
 
         </table>
         <div style="display: none" id="gps_set">
           <div>GPS操作</div>
+
           <div style="display: none">
             <input id="gps_entity_id_post_input" type="text" name="gps_entity_id_post" />
           </div>
-          <div>
+          <div style="margin-bottom: 8px;display: flex;align-items: center;">
             <span>名称：</span>
-            <span id="gps_friendly_name_div"></span>
+            <span style="margin-right: 8px; flex: 1;" id="gps_friendly_name_div"></span>
+            <button id="gps_set_cancel">取消操作</button>
           </div>
-          <div>
-            <button id="gps_set_cancel">取消</button>
-            <button id="gps_set_trajectory">路径轨迹</button>
+          <div style="margin-bottom: 8px;">
+            <div style="margin-bottom: 4px;">
+              <input id="trajectory_start_datetime" type="datetime-local"> ~ <input id="trajectory_end_datetime" type="datetime-local">
+            </div>
+            <div style="display: flex;align-items: center;">
+              <div style="flex: 1;color: red;" id="trajectory_error" ></div>
+              <button id="gps_set_trajectory">绘制轨迹</button>
+            </div>
           </div>
         </div>
       </div>
     </div>
-    <div id="minDiv" style="flex: 1;position: absolute;top: 200px; left: 100px;background-color: white;z-index: 5;padding: 8px;display: none">
+    <div id="minDiv" class="kanban" style="flex: 1;position: absolute;top: 56px; left: 0px;background-color: white;z-index: 5;padding: 8px;display: none">
         <button id="containerMax">还原</button>
     </div>
   </div>
@@ -169,12 +191,15 @@ class Ha_gaode extends HTMLElement {
   carPassedPolyline = null
   set hass(hass) {
     console.log(hass)
+    console.log(this.content)
+
     let that = this
     // Initialize the content if it's not there yet.
     this._handleHass(hass)
     if (!this.content) {
       this.innerHTML = init_html;
       this.content = this.querySelector("#dxMapDiv")
+      console.log(this.content)
       that._loadMap(hass)
       that._drawOnce(hass)
     }
@@ -332,9 +357,17 @@ class Ha_gaode extends HTMLElement {
     });
 
     let gpsSetTrajectory = this.querySelector("#gps_set_trajectory")
+
     gpsSetTrajectory.addEventListener('click', async() => {
-      var valueObj = this._getGpsFormValues()
-      let msg = await hass.callApi('get', `dx/gps/gps_list_by_entity_id?entity_id=${valueObj.entity_id}`)
+      const { entity_id, trajectory_start_datetime_seconds, trajectory_end_datetime_seconds } = this._getGpsFormValues()
+      let trajectory_error = this.querySelector("#trajectory_error")
+      if (!trajectory_start_datetime_seconds || !trajectory_end_datetime_seconds) {
+        trajectory_error.innerHTML = "轨迹时间必填!"
+        return;
+      } else {
+        trajectory_error.innerHTML = null
+      }
+      let msg = await hass.callApi('get', `dx/gps/gps_list_from_db?entity_id=${entity_id}&start_time_seconds=${trajectory_start_datetime_seconds}&end_time_seconds=${trajectory_end_datetime_seconds}`)
       console.log(msg)
       var arr = []
       for (let i = 0; i < msg.length; i++) {
@@ -380,6 +413,21 @@ class Ha_gaode extends HTMLElement {
     let gpsSet = this.querySelector("#gps_set")
     gpsSet.style = "display: block"
     this.gpsEdit = true
+    const trajectory_start_datetime = this.querySelector("#trajectory_start_datetime")
+    const trajectory_end_datetime = this.querySelector("#trajectory_end_datetime")
+    if (this.config[CONFIG_DEFAULT_TRA_TIME]) {
+      const date = new Date()
+      trajectory_end_datetime.value = this.to_datetime_string(date);
+      date.setTime(date.getTime() - this.config[CONFIG_DEFAULT_TRA_TIME] * 60 * 1000);
+      trajectory_start_datetime.value = this.to_datetime_string(date);
+    }
+  }
+  _hideGpsForm() {
+    let gpsSet = this.querySelector("#gps_set")
+    gpsSet.style = "display: none"
+    this.gpsEdit = false
+    this._clearGpsFormValues()
+    this._closeTrajectory()
   }
   _showZoneForm(obj) {
     this.amap.setCenter(obj.position)
@@ -448,17 +496,13 @@ class Ha_gaode extends HTMLElement {
       this.zoneMarkerCircleObj[k].show()
     }
   }
-  _hideGpsForm() {
-    let gpsSet = this.querySelector("#gps_set")
-    gpsSet.style = "display: none"
-    this.gpsEdit = false
-    this._clearGpsFormValues()
-    this._closeTrajectory()
-  }
   _getGpsForm() {
     return {
       gps_entity_id_post_input: this.querySelector("#gps_entity_id_post_input"),
       gps_friendly_name_div: this.querySelector("#gps_friendly_name_div"),
+      trajectory_start_datetime: this.querySelector("#trajectory_start_datetime"),
+      trajectory_end_datetime: this.querySelector("#trajectory_end_datetime"),
+      trajectory_error: this.querySelector("#trajectory_error")
     }
   }
   _getZoneForm() {
@@ -482,9 +526,20 @@ class Ha_gaode extends HTMLElement {
     }
   }
   _getGpsFormValues() {
-    var gpsForm = this._getGpsForm()
+    const { gps_entity_id_post_input, trajectory_start_datetime, trajectory_end_datetime, trajectory_error } = this._getGpsForm()
+    trajectory_error.innerHTML = null
+    let trajectory_start_datetime_seconds = null
+    if (trajectory_start_datetime.value) {
+      trajectory_start_datetime_seconds = Math.floor(new Date(trajectory_start_datetime.value) / 1000);
+    }
+    let trajectory_end_datetime_seconds = null
+    if (trajectory_end_datetime.value) {
+      trajectory_end_datetime_seconds = Math.floor(new Date(trajectory_end_datetime.value) / 1000);
+    }
     return {
-      entity_id: gpsForm.gps_entity_id_post_input.value,
+      entity_id: gps_entity_id_post_input.value,
+      trajectory_start_datetime_seconds,
+      trajectory_end_datetime_seconds,
     }
   }
   _clearZoneFormValues() {
@@ -493,16 +548,23 @@ class Ha_gaode extends HTMLElement {
     zomeForm.friendly_name_input.value = null
     zomeForm.ll_input.value = null
     zomeForm.radius_input.value = null
+
   }
   _clearGpsFormValues() {
-    var gpsForm = this._getGpsForm()
-    gpsForm.gps_entity_id_post_input.value = null
-    gpsForm.gps_friendly_name_div.innerHTML = null
+    const { gps_entity_id_post_input, gps_friendly_name_div, trajectory_start_datetime, trajectory_end_datetime, trajectory_error } = this._getGpsForm()
+    gps_entity_id_post_input.value = null
+    gps_friendly_name_div.innerHTML = null
+    trajectory_start_datetime.value = null
+    trajectory_end_datetime.value = null
+    trajectory_error.innerHTML = null
   }
   _handleHass(hass) {
     let that = this
     let { states } = hass;
     let gpsList = []
+    // device_tracker_include = this.config.device_tracker_include
+    let device_tracker_include = this.config[CONFIG_DEVICE_TRACKER_INCLUDE]
+
     for(let stateKey in states) {
       if (stateKey.startsWith('zone')) {
         let entity = states[stateKey]
@@ -522,9 +584,15 @@ class Ha_gaode extends HTMLElement {
         }
         this.zoneObj[stateKey] = entity
       } else if (stateKey.startsWith('device_tracker')) {
-        let entity = states[stateKey]
+        const entity = states[stateKey]
+        const { entity_id, attributes } = entity
+        if (device_tracker_include && device_tracker_include.length > 0) {
+          if (device_tracker_include.indexOf(entity_id) < 0) {
+            continue;
+          }
+        }
         if (entity.attributes.source_type = 'gps') {
-          let { longitude, latitude, gcj02_longitude, gcj02_latitude } = entity.attributes
+          let { longitude, latitude, gcj02_longitude, gcj02_latitude } = attributes
           if (longitude && latitude) {
             if (gcj02_longitude && gcj02_latitude) {
               // do nothing
@@ -787,10 +855,10 @@ class Ha_gaode extends HTMLElement {
     }
     let config = this.config
     window._AMapSecurityConfig = {
-      securityJsCode: config.gaode_key_security_code,
+      securityJsCode: config[CONFIG_GAODE_KEY_SECURITY_CODE],
     }
     AMapLoader.load({
-      key: config.gaode_key,       // 申请好的Web端开发者Key，首次调用 load 时必填
+      key: config[CONFIG_GAODE_KEY],       // 申请好的Web端开发者Key，首次调用 load 时必填
     }).then((AMap)=>{
       this._configMap(hass)
     }).catch((e)=>{
@@ -798,17 +866,14 @@ class Ha_gaode extends HTMLElement {
     });
   }
   setConfig(config) {
-    if (!config.gaode_key) {
+    if (!config[CONFIG_GAODE_KEY]) {
       throw new Error("请设置高德Key");
     }
     this.config = config;
   }
-  getCardSize() {
-    return 3;
-  }
   _getCenter(hass) {
     let { states } = hass;
-    let { center } = this.config
+    let center = this.config[CONFIG_CENTER]
     // 中心点
     let entity = states[center]
     if (entity) {
@@ -818,6 +883,14 @@ class Ha_gaode extends HTMLElement {
       }
     }
     return null
+  }
+  to_datetime_string(date) {
+    var year = date.getFullYear();
+    var month = ('0' + (date.getMonth() + 1)).slice(-2);
+    var day = ('0' + date.getDate()).slice(-2);
+    var hours = ('0' + date.getHours()).slice(-2);
+    var minutes = ('0' + date.getMinutes()).slice(-2);
+    return year + '-' + month + '-' + day + 'T' + hours + ':' + minutes;
   }
 }
 
