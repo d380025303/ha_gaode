@@ -69,6 +69,9 @@ tip: 编辑后经纬度可直接点击地图设置
     type: custom:dx-gaode-map-card
     gaode_key: 
     gaode_key_security_code: 
+    # 以下是device_tracker_include的配置示例, 如果不需要, 不要粘贴
+    device_tracker_include:
+      - device_tracker.XXXX
     ```
 
 ## 选项
