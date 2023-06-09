@@ -28,7 +28,10 @@
   + 增加地图位置搜索功能（高德限制每天只能搜索100次,不过应该够了)
   + 增加卫星,路网,实时交通图层展示
   + 增加点击地图会显示高德坐标功能
-
++ v3.0
+  + 路径轨迹可以根据时间条件展现了
+  + 支持可选择哪些device_tracker展示在地图上
+  + 修复主题原因导致文字消失的问题
  
 **tips: 需要用单卡片模式, 也就是说仪表盘只能是本卡片, 不然显示效果不全!**
 
@@ -64,7 +67,6 @@ tip: 编辑后经纬度可直接点击地图设置
 1. 添加自定义卡片，使用以下配置：
     ```yaml
     type: custom:dx-gaode-map-card
-    center: 
     gaode_key: 
     gaode_key_security_code: 
     ```
@@ -78,4 +80,6 @@ tips: 高德Key，安全密钥 请前往https://console.amap.com/dev/key/app 申
 | gaode_key | string | **必选** | 高德key
 | gaode_key_security_code | string | **必选** | 高德安全秘钥 
 | center | entity_id | 可选 | 初始化默认中心位置
+| default_tra_time | int | 可选 | 默认绘制路径轨迹距离现在的时间(分钟)
+| device_tracker_include | list | 可选 | 哪些device_tracker展现在地图上(不配置默认全部)
 
