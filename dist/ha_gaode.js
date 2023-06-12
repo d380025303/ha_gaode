@@ -74,6 +74,10 @@ const init_html = `
       color: black;
     }
    }
+   .flexContainer {
+    display: flex;
+    align-items: center;
+   }
 </style>
 <div id="dxMapDiv" class="dxAmap" style="height: 100%">
   <div style="display: flex;height: 100%">
@@ -108,14 +112,19 @@ const init_html = `
       </div>
 
       <div id="zoneDiv" >
-        <div style="flex: 1">Zone 位置列表</div>
+        <div class="flexContainer" style="margin-bottom: 4px;">
+          <div style="flex: 1">Zone 位置列表</div>
+          <button id="zone_add">添加</button>
+        </div>
+
         <table border="1" id="zoneContainer">
 
         </table>
 
         <div style="display: none;margin-bottom: 8px;" id="zoneSet">
           <div style="margin-bottom: 4px;">位置设置</div>
-          <div style="margin-bottom: 4px;">
+
+          <div id="zone_id_div" style="margin-bottom: 4px;">
             <span>id：</span>
             <input disabled="true" id="entity_id_post_input" type="text" name="entity_id_post" />
           </div>
@@ -192,19 +201,15 @@ class Ha_gaode extends HTMLElement {
   set hass(hass) {
     console.log(hass)
     console.log(this.content)
-
     let that = this
     // Initialize the content if it's not there yet.
-    this._handleHass(hass)
     if (!this.content) {
       this.innerHTML = init_html;
       this.content = this.querySelector("#dxMapDiv")
-      console.log(this.content)
       that._loadMap(hass)
       that._drawOnce(hass)
     }
-    this._drawWindow(hass)
-    this._drawMap(hass)
+    this._handleHass(hass)
   }
   _drawWindow(hass) {
     let that = this;
@@ -223,12 +228,17 @@ class Ha_gaode extends HTMLElement {
       const { gcj02_longitude, gcj02_latitude, friendly_name, radius } = zone.attributes
       var trE = document.createElement(`tr`)
       var key = zoneKey.replaceAll('\.', '')
+      let position = ''
+      if (gcj02_longitude && gcj02_latitude) {
+        position = gcj02_longitude + "," + gcj02_latitude
+      }
       trE.innerHTML = `
           <td >${friendly_name}</td>
-          <td style='cursor: pointer' id=${key + '_ll'}>${gcj02_longitude + "," + gcj02_latitude}</td>
+          <td style='cursor: pointer' id=${key + '_ll'}>${position}</td>
           <td >${radius}</td>
           <td>
             <button id=${key + '_edit'} dx_entity_id=${zoneKey}>编辑</button>
+            <button ${key === 'zonehome' ? "disabled" : ""} id=${key + '_delete'} dx_entity_id=${zoneKey}>删除</button>
           </td>
       `
       zoneContainer.appendChild(trE)
@@ -241,19 +251,25 @@ class Ha_gaode extends HTMLElement {
         const entityId = zoneKeyEdit.getAttribute('dx_entity_id')
         const zone = this.zoneObj[entityId]
         const { friendly_name, gcj02_longitude, gcj02_latitude, radius } = zone.attributes
-
-        this._showZoneForm({
-          position: [gcj02_longitude, gcj02_latitude],
-          friendly_name: friendly_name,
-          entity_id: entityId,
-          radius
-        })
-
         var zomeForm = this._getZoneForm()
         zomeForm.entity_id_post_input.value = zone.entity_id
         zomeForm.friendly_name_input.value = friendly_name
-        zomeForm.ll_input.value = gcj02_longitude + "," + gcj02_latitude
+        if (gcj02_longitude && gcj02_latitude) {
+          zomeForm.ll_input.value = gcj02_longitude + "," + gcj02_latitude
+        }
         zomeForm.radius_input.value = radius
+        this._showZoneForm()
+        this._drawMap(true)
+      });
+
+      let zoneKeyDelete = this.querySelector(`#${key}_delete`)
+      zoneKeyDelete.addEventListener('click', async () => {
+        const entityId = zoneKeyDelete.getAttribute('dx_entity_id')
+        const arr = entityId.split('.')
+        await hass.callWS({
+          type: "zone/delete",
+          zone_id: arr[1]
+        })
       });
     }
 
@@ -319,25 +335,69 @@ class Ha_gaode extends HTMLElement {
       this.carPassedPolyline.hide()
   }
   _drawOnce(hass) {
+    let zone_add = this.querySelector("#zone_add")
+    zone_add.addEventListener('click', async () => {
+      var zomeForm = this._getZoneForm()
+      zomeForm.entity_id_post_input.value = null
+      zomeForm.friendly_name_input.value = null
+      zomeForm.ll_input.value = null
+      zomeForm.radius_input.value = null
+      this._showZoneForm()
+      this._drawMap(true)
+    });
+
     let zoneSetCancel = this.querySelector("#zoneSetCancel")
     zoneSetCancel.addEventListener('click', () => {
       this._hideZoneForm()
+      this._drawMap()
     });
 
     let zoneSetCommit = this.querySelector("#zoneSetCommit")
-    zoneSetCommit.addEventListener('click', () => {
+    zoneSetCommit.addEventListener('click', async () => {
       var valueObj = this._getZoneFormValues()
-      // const zone = this.zoneObj[valueObj.entity_id]
-      hass.callApi('post', 'dx/zone/save', {
-        ...valueObj
-      })
+      const entity_id = valueObj.entity_id
+      if (entity_id) {
+        // 编辑
+        await hass.callApi('post', 'dx/zone/save', {
+          ...valueObj
+        })
+      } else {
+        // 创建
+        var v = {
+          name: valueObj.friendly_name,
+          latitude: 90,
+          longitude: 90,
+          radius: valueObj.radius,
+          passive: false
+        }
+        const zone_new = await hass.callWS({
+          type: "zone/create",
+          ...v
+        })
+        await hass.callApi('post', 'dx/zone/save', {
+          ...valueObj,
+          entity_id: 'zone.' + zone_new.id
+        })
+      }
       this._hideZoneForm()
+      this._drawMap()
     });
 
     let radiusInput = this.querySelector("#radius_input")
     radiusInput.addEventListener('change', (e) => {
-      this.editMarkerCircle.setRadius(radiusInput.value)
+      this._drawMap()
     })
+
+    let friendly_name_input = this.querySelector("#friendly_name_input")
+    friendly_name_input.addEventListener('change', (e) => {
+      this._drawMap()
+    })
+
+    let ll_input = this.querySelector("#ll_input")
+    ll_input.addEventListener('change', (e) => {
+      this._drawMap(true)
+    })
+
     let containerMin = this.querySelector("#containerMin")
     let containerMax = this.querySelector("#containerMax")
     let minDiv = this.querySelector("#minDiv")
@@ -354,10 +414,10 @@ class Ha_gaode extends HTMLElement {
     let gps_set_cancel = this.querySelector("#gps_set_cancel")
     gps_set_cancel.addEventListener('click', () => {
       this._hideGpsForm()
+      this._drawMap()
     });
 
     let gpsSetTrajectory = this.querySelector("#gps_set_trajectory")
-
     gpsSetTrajectory.addEventListener('click', async() => {
       const { entity_id, trajectory_start_datetime_seconds, trajectory_end_datetime_seconds } = this._getGpsFormValues()
       let trajectory_error = this.querySelector("#trajectory_error")
@@ -400,13 +460,6 @@ class Ha_gaode extends HTMLElement {
         this.amap.remove(this.trafficLayer)
       }
     });
-    // map_search_input.addEventListener('change', (e) => {
-      // if (traffic_input.checked) {
-      //   this.amap.add(this.trafficLayer)
-      // } else {
-      //   this.amap.remove(this.trafficLayer)
-      // }
-    // });
   }
   _showGpsForm(obj) {
     this.amap.setCenter(obj.position)
@@ -429,15 +482,40 @@ class Ha_gaode extends HTMLElement {
     this._clearGpsFormValues()
     this._closeTrajectory()
   }
-  _showZoneForm(obj) {
-    this.amap.setCenter(obj.position)
-    let zoneSet = this.querySelector("#zoneSet")
-    zoneSet.style = "display: block"
-    this.zoneEdit = true
-    this.alayer.hide()
-    this.editMarker = new AMap.LabelMarker({
-        name: obj.friendly_name,
-        position: obj.position,
+  _drawEditModeMap(set_center) {
+    this.amap.clearMap()
+    this.alayer.clear()
+    const valueObj = this._getZoneFormValues()
+    const { friendly_name, gcj02_longitude, gcj02_latitude, radius } = valueObj
+    let position;
+    if (gcj02_longitude && gcj02_latitude) {
+      position = [gcj02_longitude, gcj02_latitude]
+    }
+    if (set_center) {
+      this.amap.setCenter(position)
+    }
+
+    if (position) {
+      let text = null
+      let name = null
+      if (friendly_name) {
+        name = friendly_name
+        text = {
+            content: friendly_name,
+            direction: 'top',
+            offset: [0, -5],
+            style: {
+              fontSize: 13,
+              fontWeight: 'normal',
+              fillColor: '#fff',
+              padding: '2, 5',
+              backgroundColor: '#22884f'
+            }
+        }
+      }
+      const a = new AMap.LabelMarker({
+        name,
+        position: position,
         zooms: [3, 20],
         opacity: 1,
         icon: {
@@ -450,51 +528,42 @@ class Ha_gaode extends HTMLElement {
             angel: 0,
             retina: true
         },
-        text: {
-            content: obj.friendly_name,
-            direction: 'top',
-            offset: [0, -5],
-            style: {
-              fontSize: 13,
-              fontWeight: 'normal',
-              fillColor: '#fff',
-              padding: '2, 5',
-              backgroundColor: '#22884f'
-            }
-        }
-    })
-    this.editZoneLayer.add(this.editMarker)
-    this.editZoneLayer.show()
-
-    for (let k in this.zoneMarkerCircleObj) {
-      this.zoneMarkerCircleObj[k].hide()
+        text
+      })
+      this.alayer.add(a)
     }
-    this.editMarkerCircle = new AMap.Circle({
-      map: this.amap,
-      center: obj.position,
-      radius: obj.radius,
-      fillOpacity: 0.3,
-      strokeColor: '#14b4fc',
-      strokeOpacity: 0.3,
-      fillColor: '#14b4fc',
-      strokeWeight: 0
-    })
+
+    if (radius && position) {
+      new AMap.Circle({
+        map: this.amap,
+        center: position,
+        radius: radius,
+        fillOpacity: 0.3,
+        strokeColor: '#14b4fc',
+        strokeOpacity: 0.3,
+        fillColor: '#14b4fc',
+        strokeWeight: 0
+      })
+    }
+  }
+  _showZoneForm() {
+    let zone_id_div = this.querySelector("#zone_id_div")
+    const valueObj = this._getZoneFormValues()
+    const { entity_id } = valueObj
+    if (!entity_id) {
+      zone_id_div.style = "display: none"
+    } else {
+      zone_id_div.style = "display: block"
+    }
+    let zoneSet = this.querySelector("#zoneSet")
+    zoneSet.style = "display: block"
+    this.zoneEdit = true
   }
   _hideZoneForm() {
     let zoneSet = this.querySelector("#zoneSet")
     zoneSet.style = "display: none"
     this.zoneEdit = false
     this._clearZoneFormValues()
-    this.editZoneLayer.clear()
-    this.editMarker.hide()
-    this.editMarker = null
-    this.editZoneLayer.hide()
-    this.alayer.show()
-    this.editMarkerCircle.setMap(null)
-    this.editMarkerCircle = null
-    for (let k in this.zoneMarkerCircleObj) {
-      this.zoneMarkerCircleObj[k].show()
-    }
   }
   _getGpsForm() {
     return {
@@ -561,28 +630,26 @@ class Ha_gaode extends HTMLElement {
   _handleHass(hass) {
     let that = this
     let { states } = hass;
-    let gpsList = []
-    // device_tracker_include = this.config.device_tracker_include
     let device_tracker_include = this.config[CONFIG_DEVICE_TRACKER_INCLUDE]
-
+    let now_zone_list = []
+    let now_gps_list = []
+    let has_change = false;
     for(let stateKey in states) {
       if (stateKey.startsWith('zone')) {
         let entity = states[stateKey]
         let { longitude, latitude, gcj02_longitude, gcj02_latitude } = entity.attributes
         if (longitude && latitude) {
-          if (gcj02_longitude && gcj02_latitude) {
-            // do nothing
-          } else {
-            var g = this.gpsCache[longitude + "," + latitude]
-            if (g) {
-              entity.gcj02_longitude = g.longitude
-              entity.gcj02_latitude = g.latitude
-            } else {
-              gpsList.push([longitude, latitude])
+          const old_zone = this.zoneObj[stateKey]
+          if (old_zone) {
+            if (old_zone.last_updated != entity.last_updated) {
+              has_change = true
             }
+          } else {
+            has_change = true
           }
+          this.zoneObj[stateKey] = entity
         }
-        this.zoneObj[stateKey] = entity
+        now_zone_list.push(stateKey)
       } else if (stateKey.startsWith('device_tracker')) {
         const entity = states[stateKey]
         const { entity_id, attributes } = entity
@@ -592,155 +659,97 @@ class Ha_gaode extends HTMLElement {
           }
         }
         if (entity.attributes.source_type = 'gps') {
-          let { longitude, latitude, gcj02_longitude, gcj02_latitude } = attributes
-          if (longitude && latitude) {
-            if (gcj02_longitude && gcj02_latitude) {
-              // do nothing
-            } else{
-              var g = this.gpsCache[longitude + "," + latitude]
-              if (g) {
-                entity.gcj02_longitude = g.longitude
-                entity.gcj02_latitude = g.latitude
-              } else {
-                gpsList.push([longitude, latitude])
+          let { gcj02_longitude, gcj02_latitude } = attributes
+          if (gcj02_longitude && gcj02_latitude) {
+            const old_gps = this.gpsObj[stateKey]
+            if (old_gps) {
+              if (old_gps.last_updated != entity.last_updated) {
+                has_change = true
               }
+            } else {
+              has_change = true
             }
             this.gpsObj[stateKey] = entity
+            now_gps_list.push(stateKey)
           }
         }
       }
     }
-    this.gpsList = gpsList
-    var a = function() {
+
+    for (let zoneKey in this.zoneObj) {
+      if (now_zone_list.indexOf(zoneKey) < 0) {
+        delete this.zoneObj[zoneKey]
+        has_change = true
+      }
+    }
+    for (let gpsKey in this.gpsObj) {
+      if (now_gps_list.indexOf(gpsKey) < 0) {
+        delete this.gpsObj[gpsKey]
+        has_change = true
+      }
+    }
+    if (has_change) {
       that._drawWindow(hass)
-    }
-    this._calcGps(a)
-  }
-  _calcGps(f, config) {
-    if (this.gpsList.length > 0 && this.amap) {
-      let localGpsList = []
-      for (var i = 0; i < this.gpsList.length; i++) {
-        localGpsList.push(this.gpsList[i])
-      }
-      let that = this
-      console.log("_calcGps-gpsList->", that.gpsList)
-      AMap.convertFrom(that.gpsList, 'gps', function (status, result) {
-        console.log("AMap convertFrom", result)
-        if (result.info === 'ok') {
-          let locations = result.locations
-          for (let i = 0; i < locations.length; i++) {
-            let gpsLocationList = localGpsList[i]
-            let location = locations[i]
-            let { lng, lat } = location;
-            that.gpsCache[gpsLocationList[0] + "," + gpsLocationList[1]] = {
-              longitude: lng,
-              latitude: lat,
-            }
-          }
-          for(let zoneKey in that.zoneObj) {
-            let zone = that.zoneObj[zoneKey]
-            let { longitude, latitude } = zone.attributes
-            let cache = that.gpsCache[longitude + "," + latitude]
-            if (cache) {
-              zone.attributes.gcj02_longitude = cache.longitude
-              zone.attributes.gcj02_latitude = cache.latitude
-            }
-            that.zoneObj[zoneKey] = zone
-          }
-          for(let gpsKey in that.gpsObj) {
-            let gps = that.gpsObj[gpsKey]
-            let { longitude, latitude } = gps.attributes
-            let cache = that.gpsCache[longitude + "," + latitude]
-            if (cache) {
-              gps.attributes.gcj02_longitude = cache.longitude
-              gps.attributes.gcj02_latitude = cache.latitude
-            }
-            that.gpsObj[gpsKey] = gps
-          }
-          if (f) {
-            f(config)
-          }
-        }
-        that.gpsList = []
-      });
-    } else if (this.amap) {
-      if (f) {
-        f(config)
-      }
+      that._drawMap()
     }
   }
-  _drawMap() {
+  _drawMap(set_center) {
     if (!this.amap) return
     let that = this;
-    // const { hass, that } = config
-     // 设置markder
-    for(let zoneKey in that.zoneObj) {
-        let zoneMarker = that.zoneMarkerObj[zoneKey]
+    if (that.zoneEdit) {
+      this._drawEditModeMap(set_center)
+    } else {
+      that.amap.clearMap()
+      that.alayer.clear()
+      for (let zoneKey in that.zoneObj) {
         let zone = that.zoneObj[zoneKey]
         let { gcj02_longitude, gcj02_latitude, friendly_name, radius } = zone.attributes
-        if (!zoneMarker) {
-            var a = new AMap.LabelMarker({
-              name: friendly_name,
-              position: [gcj02_longitude, gcj02_latitude],
-              zooms: [3, 20],
-              opacity: 1,
-              icon: zone_icon,
-              text: {
-                ...zone_text,
-                content: friendly_name,
-              }
-            })
-            that.zoneMarkerObj[zoneKey] = a
-            that.alayer.add(a);
-        } else {
-          zoneMarker.setPosition([gcj02_longitude, gcj02_latitude])
-          zoneMarker.setText({...zone_text, content: friendly_name})
+        if (gcj02_longitude && gcj02_latitude) {
+          var a = new AMap.LabelMarker({
+            name: friendly_name,
+            position: [gcj02_longitude, gcj02_latitude],
+            zooms: [3, 20],
+            opacity: 1,
+            icon: zone_icon,
+            text: {
+              ...zone_text,
+              content: friendly_name,
+            }
+          })
+          that.alayer.add(a);
         }
-
-        let zoneMarkerCircle = that.zoneMarkerCircleObj[zoneKey]
-        if (!zoneMarkerCircle) {
-            var b = new AMap.Circle({
-              map: that.amap,
-              center: [gcj02_longitude, gcj02_latitude],
-              radius,
-              fillOpacity: 0.3,
-              strokeColor: '#14b4fc',
-              strokeOpacity: 0.3,
-              fillColor: '#14b4fc',
-              strokeWeight: 0
-            })
-            that.zoneMarkerCircleObj[zoneKey] = b
-        } else {
-            zoneMarkerCircle.setCenter([gcj02_longitude, gcj02_latitude])
-            zoneMarkerCircle.setRadius(radius)
+        if (gcj02_longitude && gcj02_latitude && radius >= 0) {
+          new AMap.Circle({
+            map: that.amap,
+            center: [gcj02_longitude, gcj02_latitude],
+            radius,
+            fillOpacity: 0.3,
+            strokeColor: '#14b4fc',
+            strokeOpacity: 0.3,
+            fillColor: '#14b4fc',
+            strokeWeight: 0
+          })
         }
       }
-
       for(let key in that.gpsObj) {
         let gps = that.gpsObj[key]
-        let zoneMarker = that.zoneMarkerObj[key]
         let { gcj02_longitude, gcj02_latitude, friendly_name } = gps.attributes
-
-        if (!zoneMarker) {
-            var a = new AMap.LabelMarker({
-              name: friendly_name,
-              position: [gcj02_longitude, gcj02_latitude],
-              zooms: [3, 20],
-              opacity: 1,
-              icon: gps_icon,
-              text: {
-                ...gps_test,
-                content: friendly_name
-              }
-            })
-            that.zoneMarkerObj[key] = a
-            that.alayer.add(a);
-        } else {
-          zoneMarker.setPosition([gcj02_longitude, gcj02_latitude])
-          zoneMarker.setText({...gps_test, content: friendly_name})
+        if (gcj02_longitude && gcj02_latitude) {
+          var a = new AMap.LabelMarker({
+            name: friendly_name,
+            position: [gcj02_longitude, gcj02_latitude],
+            zooms: [3, 20],
+            opacity: 1,
+            icon: gps_icon,
+            text: {
+              ...gps_test,
+              content: friendly_name
+            }
+          })
+          that.alayer.add(a);
         }
-
       }
+    }
   }
   _configMap(hass) {
     const that = this;
@@ -753,7 +762,6 @@ class Ha_gaode extends HTMLElement {
         animateEnable: false,
         jogEnable: false
       });
-
       const layer = new AMap.LabelsLayer({
         zooms: [3, 20],
         zIndex: 1000,
@@ -788,10 +796,6 @@ class Ha_gaode extends HTMLElement {
       this.carMarker = new AMap.Marker({
         map: this.amap,
         visible: false,
-        icon: "https://webapi.amap.com/images/car.png",
-        offset: new AMap.Pixel(-26, -13),
-        autoRotation: true,
-        angle:-90,
       })
       this.carMarker.on('moving', function (e) {
         that.carPassedPolyline.setPath(e.passedPath);
@@ -818,30 +822,23 @@ class Ha_gaode extends HTMLElement {
         const lng = e.lnglat.lng
         const lat = e.lnglat.lat
         if (that.zoneEdit) {
-          that.editMarker.setPosition([lng, lat])
-          that.editMarkerCircle.setCenter([lng, lat])
           const llInput = that.querySelector("#ll_input")
           llInput.value = lng + "," + lat
+          that._drawMap()
         } else {
           const click_ll_span = that.querySelector("#click_ll_span");
           click_ll_span.innerHTML = lng + "," + lat
           click_ll_span.style.color = random_color[Math.round(Math.random()*random_color.length - 1)]
         }
       })
-      var a = function() {
-        that._drawMap()
-        that._drawWindow(hass)
-      }
-
+      that._drawMap()
+      that._drawWindow(hass)
       this.mapLoading = false;
-      this._calcGps(a)
     }
   }
   _loadMap(hass) {
     console.log("_loadMap...")
-    let that = this
     if (this.mapLoading) {return}
-
     this.mapLoading = true
     if (this.amap) {
       this.amap.destroy()
