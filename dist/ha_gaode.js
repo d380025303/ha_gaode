@@ -1,6 +1,6 @@
 import "https://webapi.amap.com/loader.js"
 
-const VERSION = "3.0"
+const VERSION = "V4.1"
 const CONFIG_DEVICE_TRACKER_INCLUDE = 'device_tracker_include'
 const CONFIG_GAODE_KEY = 'gaode_key'
 const CONFIG_GAODE_KEY_SECURITY_CODE = 'gaode_key_security_code'
@@ -83,8 +83,9 @@ const init_html = `
   <div style="display: flex;height: 100%">
     <div style="height: 100%;width: 100%;" id="mapContainer" class="mapContainer"></div>
     <div id="maxDiv" class="kanban" style="flex: 1;position: absolute;top: 56px; left: 0px;background-color: white;z-index: 5;padding: 8px">
-      <div style="display: flex;margin-bottom: 8px">
-        <button id="containerMin">最小化</button>
+      <div class="flexContainer" style="margin-bottom: 8px">
+        <button id="containerMin" style="margin-right: 8px">最小化</button>
+        <div>版本：${VERSION}</div>
       </div>
 
       <div style="margin-bottom: 8px">
@@ -186,6 +187,7 @@ class Ha_gaode extends HTMLElement {
   mapLoading = false
   zoneEdit = false
   gpsEdit = false
+  trajectoryMode = false
   editMarker = null
   editMarkerCircle = null
   amap = null
@@ -320,19 +322,38 @@ class Ha_gaode extends HTMLElement {
     }
   }
   _toTrajectory(arr) {
+    const that = this
     if (arr.length > 0) {
-      let that = this
-      this.amap.setZoomAndCenter(17, arr[0])
-      this.carPolyline.setPath(arr)
-      this.carPolyline.show()
-      this.carPassedPolyline.show()
-      that.carMarker.moveAlong(arr, 200);
+      const carPolyline = new AMap.Polyline({
+        map: this.amap,
+        showDir:true,
+        strokeColor: "#28F",
+        strokeWeight: 6,
+      });
+      const carPassedPolyline = new AMap.Polyline({
+        map: this.amap,
+        strokeColor: "#AF5",  //线颜色
+        strokeWeight: 6,      //线宽
+      });
+      const carMarker = new AMap.Marker({
+        map: this.amap,
+        visible: false,
+      })
+      carMarker.on('moving', function (e) {
+        carPassedPolyline.setPath(e.passedPath)
+      });
+      // carMarker.on('moveend', function (e) {
+      //   that.trajectoryMode = false
+      // });
+      that.amap.setZoomAndCenter(17, arr[0])
+      carPolyline.setPath(arr)
+      carMarker.moveAlong(arr, 200);
+      that.trajectoryMode = true
     }
   }
   _closeTrajectory() {
-      this.carMarker.hide()
-      this.carPolyline.hide()
-      this.carPassedPolyline.hide()
+    this.trajectoryMode = false
+    this._drawMap()
   }
   _drawOnce(hass) {
     let zone_add = this.querySelector("#zone_add")
@@ -501,16 +522,16 @@ class Ha_gaode extends HTMLElement {
       if (friendly_name) {
         name = friendly_name
         text = {
-            content: friendly_name,
-            direction: 'top',
-            offset: [0, -5],
-            style: {
-              fontSize: 13,
-              fontWeight: 'normal',
-              fillColor: '#fff',
-              padding: '2, 5',
-              backgroundColor: '#22884f'
-            }
+          content: friendly_name,
+          direction: 'top',
+          offset: [0, -5],
+          style: {
+            fontSize: 13,
+            fontWeight: 'normal',
+            fillColor: '#fff',
+            padding: '2, 5',
+            backgroundColor: '#22884f'
+          }
         }
       }
       const a = new AMap.LabelMarker({
@@ -519,14 +540,14 @@ class Ha_gaode extends HTMLElement {
         zooms: [3, 20],
         opacity: 1,
         icon: {
-            type: 'image',
-            image: 'https://a.amap.com/jsapi_demos/static/images/poi-marker.png',
-            clipOrigin: [194, 92],
-            clipSize: [50, 68],
-            size: [25, 34],
-            anchor: 'bottom-center',
-            angel: 0,
-            retina: true
+          type: 'image',
+          image: 'https://a.amap.com/jsapi_demos/static/images/poi-marker.png',
+          clipOrigin: [194, 92],
+          clipSize: [50, 68],
+          size: [25, 34],
+          anchor: 'bottom-center',
+          angel: 0,
+          retina: true
         },
         text
       })
@@ -695,6 +716,7 @@ class Ha_gaode extends HTMLElement {
   }
   _drawMap(set_center) {
     if (!this.amap) return
+    if (this.trajectoryMode) return
     let that = this;
     if (that.zoneEdit) {
       this._drawEditModeMap(set_center)
@@ -791,29 +813,6 @@ class Ha_gaode extends HTMLElement {
           that.amap.setCenter(data.poi.location)
         })
       });
-
-      // 轨迹
-      this.carMarker = new AMap.Marker({
-        map: this.amap,
-        visible: false,
-      })
-      this.carMarker.on('moving', function (e) {
-        that.carPassedPolyline.setPath(e.passedPath);
-      });
-      this.carPolyline = new AMap.Polyline({
-        map: this.amap,
-        showDir:true,
-        strokeColor: "#28F",
-        strokeWeight: 6,
-      });
-      this.carPolyline.hide()
-
-      this.carPassedPolyline = new AMap.Polyline({
-        map: this.amap,
-        strokeColor: "#AF5",  //线颜色
-        strokeWeight: 6,      //线宽
-      });
-      this.carPassedPolyline.hide()
 
       this.alayer = layer
       this.editZoneLayer = editZoneLayer
