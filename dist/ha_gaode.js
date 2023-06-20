@@ -1,12 +1,15 @@
 import "https://webapi.amap.com/loader.js"
 
-const VERSION = "V4.1"
+const VERSION = "V5.0"
 const CONFIG_DEVICE_TRACKER_INCLUDE = 'device_tracker_include'
 const CONFIG_GAODE_KEY = 'gaode_key'
 const CONFIG_GAODE_KEY_SECURITY_CODE = 'gaode_key_security_code'
 const CONFIG_CENTER = 'center'
 const CONFIG_DEFAULT_TRA_TIME = 'default_tra_time'
 
+const ZONE = 'zone'
+const DEVICE_TRACKER = 'device_tracker'
+const POLYGON_P = 0.001
 
 const random_color = [
   "#00ff00",
@@ -78,6 +81,23 @@ const init_html = `
     display: flex;
     align-items: center;
    }
+   .amap-marker {
+    position: absolute;
+    left: 0;
+    top: 0;
+  }
+  .amap-marker-label {
+    position: absolute;
+    z-index: 2;
+    background-color: #22884f;
+    color: #fff;
+    white-space: nowrap;
+    cursor: default;
+    padding: 3px;
+    font-size: 12px;
+    line-height: 14px;
+    border: 0;
+  }
 </style>
 <div id="dxMapDiv" class="dxAmap" style="height: 100%">
   <div style="display: flex;height: 100%">
@@ -140,6 +160,9 @@ const init_html = `
           <div style="margin-bottom: 4px;">
             <span>范围：</span>
             <input id="radius_input" type="text" name="radius" />
+            <input style="display: none;" id="polygon_input" type="text" name="polygon" />
+            <button id="change_to_polygon">多边形</button>
+            <button id="change_to_radius">圆形</button>
           </div>
           <div style="margin-bottom: 4px;">
             <button id="zoneSetCancel">取消</button>
@@ -184,6 +207,10 @@ const init_html = `
 `
 
 class Ha_gaode extends HTMLElement {
+  constructor() {
+    super()
+    // this.attachShadow({ mode: 'closed' });
+  }
   mapLoading = false
   zoneEdit = false
   gpsEdit = false
@@ -212,6 +239,46 @@ class Ha_gaode extends HTMLElement {
       that._drawOnce(hass)
     }
     this._handleHass(hass)
+  }
+  _get_marker_options(type, friendly_name, gcj02_longitude, gcj02_latitude) {
+    let basic = {
+      map: this.amap,
+      name: friendly_name,
+      position: [gcj02_longitude, gcj02_latitude],
+      zooms: [3, 20],
+      opacity: 1,
+      label: {
+        content: `<div>${friendly_name}</div>`,
+        offset: new AMap.Pixel(0, -30),
+        direction: 'center'
+      }
+    }
+    return basic
+  }
+  _get_circle_options(type, radius, gcj02_longitude, gcj02_latitude) {
+    let basic = {
+      map: this.amap,
+      center: [gcj02_longitude, gcj02_latitude],
+      radius: radius,
+      fillOpacity: 0.3,
+      strokeColor: '#14b4fc',
+      strokeOpacity: 0.3,
+      fillColor: '#14b4fc',
+      strokeWeight: 0
+    }
+    return basic
+  }
+  _get_polygon_options(type, polygon_arr) {
+    const basic = {
+      path: polygon_arr,
+      strokeColor: "#14b4fc",
+      strokeWeight: 6,
+      strokeOpacity: 0.3,
+      fillOpacity: 0.4,
+      fillColor: '#14b4fc',
+      draggable: false
+    }
+    return basic
   }
   _drawWindow(hass) {
     let that = this;
@@ -252,7 +319,7 @@ class Ha_gaode extends HTMLElement {
       zoneKeyEdit.addEventListener('click', () => {
         const entityId = zoneKeyEdit.getAttribute('dx_entity_id')
         const zone = this.zoneObj[entityId]
-        const { friendly_name, gcj02_longitude, gcj02_latitude, radius } = zone.attributes
+        const { friendly_name, gcj02_longitude, gcj02_latitude, radius, dx_polygon } = zone.attributes
         var zomeForm = this._getZoneForm()
         zomeForm.entity_id_post_input.value = zone.entity_id
         zomeForm.friendly_name_input.value = friendly_name
@@ -260,6 +327,11 @@ class Ha_gaode extends HTMLElement {
           zomeForm.ll_input.value = gcj02_longitude + "," + gcj02_latitude
         }
         zomeForm.radius_input.value = radius
+        if (dx_polygon) {
+          zomeForm.polygon_input.value = dx_polygon
+        } else {
+          zomeForm.polygon_input.value = null
+        }
         this._showZoneForm()
         this._drawMap(true)
       });
@@ -337,10 +409,16 @@ class Ha_gaode extends HTMLElement {
       });
       const carMarker = new AMap.Marker({
         map: this.amap,
-        visible: false,
+        position: arr[0],
+        icon: "https://webapi.amap.com/images/car.png",
+        offset: new AMap.Pixel(-26, -13),
+        autoRotation: true,
+        angle: -90,
       })
       carMarker.on('moving', function (e) {
+        console.log(e.passedPath)
         carPassedPolyline.setPath(e.passedPath)
+        that.amap.setCenter((e.passedPath)[1])
       });
       // carMarker.on('moveend', function (e) {
       //   that.trajectoryMode = false
@@ -356,6 +434,30 @@ class Ha_gaode extends HTMLElement {
     this._drawMap()
   }
   _drawOnce(hass) {
+    let change_to_polygon = this.querySelector("#change_to_polygon")
+    let change_to_radius = this.querySelector("#change_to_radius")
+    change_to_polygon.addEventListener('click', async () => {
+      const { radius_input, polygon_input } = this._getZoneForm()
+      radius_input.style.display = "none"
+      polygon_input.style.display = "inline-block"
+      const { gcj02_longitude, gcj02_latitude, dx_polygon } = this._getZoneFormValues()
+      if (!dx_polygon) {
+        const polygon_arr = []
+        polygon_arr.push([(parseFloat(gcj02_longitude) + POLYGON_P).toFixed(6) + "," + (parseFloat(gcj02_latitude) + POLYGON_P).toFixed(6)])
+        polygon_arr.push([(parseFloat(gcj02_longitude) + POLYGON_P).toFixed(6) + "," + (parseFloat(gcj02_latitude) - POLYGON_P).toFixed(6)])
+        polygon_arr.push([(parseFloat(gcj02_longitude) - POLYGON_P).toFixed(6) + "," + (parseFloat(gcj02_latitude) - POLYGON_P).toFixed(6)])
+        polygon_arr.push([(parseFloat(gcj02_longitude) - POLYGON_P).toFixed(6) + "," + (parseFloat(gcj02_latitude) + POLYGON_P).toFixed(6)])
+        polygon_input.value = polygon_arr.join(';')
+      }
+      this._drawMap()
+    })
+    change_to_radius.addEventListener('click', async () => {
+      const { radius_input, polygon_input } = this._getZoneForm()
+      radius_input.style.display = "inline-block"
+      polygon_input.style.display = "none"
+      polygon_input.value = null
+      this._drawMap()
+    })
     let zone_add = this.querySelector("#zone_add")
     zone_add.addEventListener('click', async () => {
       var zomeForm = this._getZoneForm()
@@ -365,18 +467,19 @@ class Ha_gaode extends HTMLElement {
       zomeForm.radius_input.value = null
       this._showZoneForm()
       this._drawMap(true)
-    });
-
+    })
     let zoneSetCancel = this.querySelector("#zoneSetCancel")
     zoneSetCancel.addEventListener('click', () => {
       this._hideZoneForm()
       this._drawMap()
-    });
-
+    })
     let zoneSetCommit = this.querySelector("#zoneSetCommit")
     zoneSetCommit.addEventListener('click', async () => {
       var valueObj = this._getZoneFormValues()
       const entity_id = valueObj.entity_id
+      if (!valueObj.radius) {
+        valueObj.radius = 0
+      }
       if (entity_id) {
         // 编辑
         await hass.callApi('post', 'dx/zone/save', {
@@ -402,23 +505,19 @@ class Ha_gaode extends HTMLElement {
       }
       this._hideZoneForm()
       this._drawMap()
-    });
-
+    })
     let radiusInput = this.querySelector("#radius_input")
     radiusInput.addEventListener('change', (e) => {
       this._drawMap()
     })
-
     let friendly_name_input = this.querySelector("#friendly_name_input")
     friendly_name_input.addEventListener('change', (e) => {
       this._drawMap()
     })
-
     let ll_input = this.querySelector("#ll_input")
     ll_input.addEventListener('change', (e) => {
       this._drawMap(true)
     })
-
     let containerMin = this.querySelector("#containerMin")
     let containerMax = this.querySelector("#containerMax")
     let minDiv = this.querySelector("#minDiv")
@@ -436,8 +535,7 @@ class Ha_gaode extends HTMLElement {
     gps_set_cancel.addEventListener('click', () => {
       this._hideGpsForm()
       this._drawMap()
-    });
-
+    })
     let gpsSetTrajectory = this.querySelector("#gps_set_trajectory")
     gpsSetTrajectory.addEventListener('click', async() => {
       const { entity_id, trajectory_start_datetime_seconds, trajectory_end_datetime_seconds } = this._getGpsFormValues()
@@ -464,7 +562,7 @@ class Ha_gaode extends HTMLElement {
       } else {
         this.amap.remove(this.satelliteLayer)
       }
-    });
+    })
     let roadnet_input = this.querySelector("#roadnet_input")
     roadnet_input.addEventListener('change', (e) => {
       if (roadnet_input.checked) {
@@ -472,7 +570,7 @@ class Ha_gaode extends HTMLElement {
       } else {
         this.amap.remove(this.roadnetLayer)
       }
-    });
+    })
     let traffic_input = this.querySelector("#traffic_input")
     traffic_input.addEventListener('change', (e) => {
       if (traffic_input.checked) {
@@ -480,7 +578,7 @@ class Ha_gaode extends HTMLElement {
       } else {
         this.amap.remove(this.trafficLayer)
       }
-    });
+    })
   }
   _showGpsForm(obj) {
     this.amap.setCenter(obj.position)
@@ -505,9 +603,8 @@ class Ha_gaode extends HTMLElement {
   }
   _drawEditModeMap(set_center) {
     this.amap.clearMap()
-    this.alayer.clear()
     const valueObj = this._getZoneFormValues()
-    const { friendly_name, gcj02_longitude, gcj02_latitude, radius } = valueObj
+    const { friendly_name, gcj02_longitude, gcj02_latitude, radius, dx_polygon } = valueObj
     let position;
     if (gcj02_longitude && gcj02_latitude) {
       position = [gcj02_longitude, gcj02_latitude]
@@ -515,62 +612,37 @@ class Ha_gaode extends HTMLElement {
     if (set_center) {
       this.amap.setCenter(position)
     }
-
     if (position) {
-      let text = null
-      let name = null
-      if (friendly_name) {
-        name = friendly_name
-        text = {
-          content: friendly_name,
-          direction: 'top',
-          offset: [0, -5],
-          style: {
-            fontSize: 13,
-            fontWeight: 'normal',
-            fillColor: '#fff',
-            padding: '2, 5',
-            backgroundColor: '#22884f'
-          }
-        }
-      }
-      const a = new AMap.LabelMarker({
-        name,
-        position: position,
-        zooms: [3, 20],
-        opacity: 1,
-        icon: {
-          type: 'image',
-          image: 'https://a.amap.com/jsapi_demos/static/images/poi-marker.png',
-          clipOrigin: [194, 92],
-          clipSize: [50, 68],
-          size: [25, 34],
-          anchor: 'bottom-center',
-          angel: 0,
-          retina: true
-        },
-        text
-      })
-      this.alayer.add(a)
+      new AMap.Marker(this._get_marker_options(ZONE, friendly_name, gcj02_longitude, gcj02_latitude))
     }
-
-    if (radius && position) {
-      new AMap.Circle({
-        map: this.amap,
-        center: position,
-        radius: radius,
-        fillOpacity: 0.3,
-        strokeColor: '#14b4fc',
-        strokeOpacity: 0.3,
-        fillColor: '#14b4fc',
-        strokeWeight: 0
+    const polygon_arr = this._transform_polygon_2_array(dx_polygon)
+    if (polygon_arr && position) {
+      var b = new AMap.Polygon(this._get_polygon_options(ZONE, polygon_arr))
+      this.amap.add(b)
+      const polygon_input = this.querySelector("#polygon_input")
+      const polyEditor = new AMap.PolyEditor(this.amap, b)
+      polyEditor.on('adjust', function (event) {
+        console.info('触发事件： adjust', event.target.w.path)
+        let now_arr = []
+        let now_path_arr = event.target.w.path
+        for (let i = 0; i < now_path_arr.length; i++) {
+          const { lng, lat } = now_path_arr[i]
+          now_arr.push([lng.toFixed(6) + "," + lat.toFixed(6)])
+        }
+        polygon_input.value = now_arr.join(';')
       })
+      polyEditor.open()
+    } else if (radius && position) {
+      new AMap.Circle(this._get_circle_options(ZONE, radius, gcj02_longitude, gcj02_latitude))
     }
   }
   _showZoneForm() {
     let zone_id_div = this.querySelector("#zone_id_div")
+    let radius_input = this.querySelector("#radius_input")
+    let polygon_input = this.querySelector("#polygon_input")
+
     const valueObj = this._getZoneFormValues()
-    const { entity_id } = valueObj
+    const { entity_id, dx_polygon } = valueObj
     if (!entity_id) {
       zone_id_div.style = "display: none"
     } else {
@@ -579,6 +651,14 @@ class Ha_gaode extends HTMLElement {
     let zoneSet = this.querySelector("#zoneSet")
     zoneSet.style = "display: block"
     this.zoneEdit = true
+    if (!dx_polygon || dx_polygon === '') {
+      radius_input.style.display = "inline-block"
+      polygon_input.style.display = "none"
+    } else {
+      radius_input.style.display = "none"
+      polygon_input.style.display = "inline-block"
+    }
+
   }
   _hideZoneForm() {
     let zoneSet = this.querySelector("#zoneSet")
@@ -601,18 +681,20 @@ class Ha_gaode extends HTMLElement {
       ll_input: this.querySelector("#ll_input"),
       radius_input: this.querySelector("#radius_input"),
       entity_id_post_input: this.querySelector("#entity_id_post_input"),
+      polygon_input: this.querySelector("#polygon_input"),
     }
   }
   _getZoneFormValues() {
-    var zomeForm = this._getZoneForm()
-    var ll = zomeForm.ll_input.value
-    var llArray = ll.split(",")
+    const { ll_input, entity_id_post_input, friendly_name_input, radius_input, polygon_input } = this._getZoneForm()
+    const ll = ll_input.value
+    const llArray = ll.split(",")
     return {
-      entity_id: zomeForm.entity_id_post_input.value,
-      friendly_name: zomeForm.friendly_name_input.value,
+      entity_id: entity_id_post_input.value,
+      friendly_name: friendly_name_input.value,
       gcj02_longitude: llArray[0],
       gcj02_latitude: llArray[1],
-      radius: parseInt(zomeForm.radius_input.value),
+      radius: parseInt(radius_input.value),
+      dx_polygon: polygon_input.value
     }
   }
   _getGpsFormValues() {
@@ -633,12 +715,12 @@ class Ha_gaode extends HTMLElement {
     }
   }
   _clearZoneFormValues() {
-    var zomeForm = this._getZoneForm()
-    zomeForm.entity_id_post_input.value = null
-    zomeForm.friendly_name_input.value = null
-    zomeForm.ll_input.value = null
-    zomeForm.radius_input.value = null
-
+    const { entity_id_post_input, friendly_name_input, ll_input, radius_input, polygon_input } = this._getZoneForm()
+    entity_id_post_input.value = null
+    friendly_name_input.value = null
+    ll_input.value = null
+    radius_input.value = null
+    polygon_input.value = null
   }
   _clearGpsFormValues() {
     const { gps_entity_id_post_input, gps_friendly_name_div, trajectory_start_datetime, trajectory_end_datetime, trajectory_error } = this._getGpsForm()
@@ -722,53 +804,26 @@ class Ha_gaode extends HTMLElement {
       this._drawEditModeMap(set_center)
     } else {
       that.amap.clearMap()
-      that.alayer.clear()
       for (let zoneKey in that.zoneObj) {
         let zone = that.zoneObj[zoneKey]
-        let { gcj02_longitude, gcj02_latitude, friendly_name, radius } = zone.attributes
+        let { gcj02_longitude, gcj02_latitude, friendly_name, radius, dx_polygon } = zone.attributes
         if (gcj02_longitude && gcj02_latitude) {
-          var a = new AMap.LabelMarker({
-            name: friendly_name,
-            position: [gcj02_longitude, gcj02_latitude],
-            zooms: [3, 20],
-            opacity: 1,
-            icon: zone_icon,
-            text: {
-              ...zone_text,
-              content: friendly_name,
-            }
-          })
-          that.alayer.add(a);
+          new AMap.Marker(this._get_marker_options(ZONE, friendly_name, gcj02_longitude, gcj02_latitude))
         }
-        if (gcj02_longitude && gcj02_latitude && radius >= 0) {
-          new AMap.Circle({
-            map: that.amap,
-            center: [gcj02_longitude, gcj02_latitude],
-            radius,
-            fillOpacity: 0.3,
-            strokeColor: '#14b4fc',
-            strokeOpacity: 0.3,
-            fillColor: '#14b4fc',
-            strokeWeight: 0
-          })
+        if (gcj02_longitude && gcj02_latitude && dx_polygon) {
+          const polygon_arr = this._transform_polygon_2_array(dx_polygon)
+          this.amap.add(new AMap.Polygon(this._get_polygon_options(ZONE, polygon_arr)))
+        } else if (gcj02_longitude && gcj02_latitude && radius >= 0) {
+          new AMap.Circle(this._get_circle_options(ZONE, radius, gcj02_longitude, gcj02_latitude))
         }
+
+
       }
       for(let key in that.gpsObj) {
         let gps = that.gpsObj[key]
         let { gcj02_longitude, gcj02_latitude, friendly_name } = gps.attributes
         if (gcj02_longitude && gcj02_latitude) {
-          var a = new AMap.LabelMarker({
-            name: friendly_name,
-            position: [gcj02_longitude, gcj02_latitude],
-            zooms: [3, 20],
-            opacity: 1,
-            icon: gps_icon,
-            text: {
-              ...gps_test,
-              content: friendly_name
-            }
-          })
-          that.alayer.add(a);
+          new AMap.Marker(this._get_marker_options(DEVICE_TRACKER, friendly_name, gcj02_longitude, gcj02_latitude))
         }
       }
     }
@@ -784,28 +839,13 @@ class Ha_gaode extends HTMLElement {
         animateEnable: false,
         jogEnable: false
       });
-      const layer = new AMap.LabelsLayer({
-        zooms: [3, 20],
-        zIndex: 1000,
-        animation: false,
-        collision: false
-      });
-      const editZoneLayer = new AMap.LabelsLayer({
-        zooms: [3, 20],
-        zIndex: 1000,
-        animation: false,
-        visible: false,
-        collision: false
-      });
-      this.amap.add(layer);
-      this.amap.add(editZoneLayer);
-
+      // 图层
       this.satelliteLayer= new AMap.TileLayer.Satellite();
       this.roadnetLayer = new AMap.TileLayer.RoadNet()
       this.trafficLayer = new AMap.TileLayer.Traffic()
-
+      //异步加载插件
       let map_search_input = this.querySelector("#map_search_input");
-      AMap.plugin('AMap.Autocomplete',function(){//异步加载插件
+      this.amap.plugin(['AMap.Autocomplete', 'AMap.PolyEditor'],function(){
         const auto = new AMap.Autocomplete({
           input: map_search_input
         });
@@ -813,15 +853,29 @@ class Ha_gaode extends HTMLElement {
           that.amap.setCenter(data.poi.location)
         })
       });
-
-      this.alayer = layer
-      this.editZoneLayer = editZoneLayer
-
+      // this.amap.plugin('')
+      // 地图点击事件处理
       this.amap.on('click', function (e) {
         const lng = e.lnglat.lng
         const lat = e.lnglat.lat
         if (that.zoneEdit) {
           const llInput = that.querySelector("#ll_input")
+          const polygon_input = that.querySelector("#polygon_input")
+          const polygon_value = polygon_input.value
+          if (polygon_value) {
+            const polygon_array = that._transform_polygon_2_array(polygon_value)
+            const old_llArray = llInput.value.split(",")
+            const old_lng = parseFloat(old_llArray[0])
+            const old_lat = parseFloat(old_llArray[1])
+            const diff_lng = lng - old_lng
+            const diff_lat = lat - old_lat
+            let new_arr = []
+            for (let i = 0; i < polygon_array.length; i++) {
+              const inner_arr = polygon_array[i]
+              new_arr.push((inner_arr[0] + diff_lng).toFixed(6) + "," + (inner_arr[1] + diff_lat).toFixed(6))
+            }
+            polygon_input.value = new_arr.join(';')
+          }
           llInput.value = lng + "," + lat
           that._drawMap()
         } else {
@@ -842,7 +896,6 @@ class Ha_gaode extends HTMLElement {
     if (this.amap) {
       this.amap.destroy()
       this.amap = null
-      this.alayer = null
       this.editZoneLayer = null
       this.zoneMarkerObj = {}
       this.zoneMarkerCircleObj = {}
@@ -887,6 +940,19 @@ class Ha_gaode extends HTMLElement {
     var hours = ('0' + date.getHours()).slice(-2);
     var minutes = ('0' + date.getMinutes()).slice(-2);
     return year + '-' + month + '-' + day + 'T' + hours + ':' + minutes;
+  }
+  _transform_polygon_2_array(polygon) {
+    console.log(polygon)
+    if (!polygon || polygon === '') {
+      return null
+    }
+    const return_arr = []
+    const ll_arr = polygon.split(';')
+    for (let i = 0; i < ll_arr.length; i++) {
+      const ll = ll_arr[i].split(",")
+      return_arr.push([parseFloat(ll[0]),parseFloat(ll[1])])
+    }
+    return return_arr
   }
 }
 

@@ -2,9 +2,9 @@
  * @Author        : dx
  * @Github        : https://github.com/d380025303
  * @Description   : 
- * @Date          : 2023-05-29 16:00:00
+ * @Date          : 2023-06-20 16:00:00
  * @LastEditors   : dx
- * @LastEditTime  : 2023-05-29 16:00:00
+ * @LastEditTime  : 2023-06-20 16:00:00
  -->
 
 # Dx Gaode Map Card
@@ -38,7 +38,10 @@
 + v4.1
   + 修复路径轨迹不能画出的问题
   + 页面上增加版本号 
- 
++ v5.0
+  + zone可以设置成多边形了！
+  + 路径轨迹增加小车车效果
+  
 **tips: 需要用单卡片模式, 也就是说仪表盘只能是本卡片, 不然显示效果不全!**
 
 ## 预览
