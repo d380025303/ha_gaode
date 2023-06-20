@@ -13,14 +13,13 @@
 
 基于高德地图API实现的Home Assistant前端卡片
 
-+ 支持修改地点位置，修改地点范围（你将不用烦恼GPS与国内经纬度偏差）
-+ 支持GPSLogger实时展示
+必须与 [ha_gaode_server](https://github.com/d380025303/ha_gaode_server) 一起食用
 
 ## 更新
 + v1.0
   + 支持修改地点位置，修改地点范围（你将不用烦恼GPS与国内经纬度偏差）
   + 支持GPSLogger实时展示
-+ v2.0(重大更新) -- 必须与 [ha_gaode_server](https://github.com/d380025303/ha_gaode_server) 一起食用
++ v2.0(重大更新)
   + 增加GPS路径轨迹
   + 增加GPS与zone的交互事件
   + 修复bug: 重启后位置点被重置
