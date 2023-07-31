@@ -1,6 +1,6 @@
 import "https://webapi.amap.com/loader.js"
 
-const VERSION = "V5.1"
+const VERSION = "V5.1.1"
 const CONFIG_DEVICE_TRACKER_INCLUDE = 'device_tracker_include'
 const CONFIG_GAODE_KEY = 'gaode_key'
 const CONFIG_GAODE_KEY_SECURITY_CODE = 'gaode_key_security_code'
@@ -9,6 +9,7 @@ const CONFIG_DEFAULT_TRA_TIME = 'default_tra_time'
 
 const ZONE = 'zone'
 const DEVICE_TRACKER = 'device_tracker'
+const OTHER = 'other'
 const POLYGON_P = 0.001
 
 const random_color = [
@@ -25,49 +26,49 @@ const random_color = [
 ]
 
 // const zone_icon = {
-//     type: 'image',
-//     image: 'https://a.amap.com/jsapi_demos/static/images/poi-marker.png',
-//     clipOrigin: [194, 92],
-//     clipSize: [50, 68],
-//     size: [25, 34],
-//     anchor: 'bottom-center',
-//     angel: 0,
-//     retina: true
+//   type: 'image',
+//   image: 'https://a.amap.com/jsapi_demos/static/images/poi-marker.png',
+//   clipOrigin: [194, 92],
+//   clipSize: [50, 68],
+//   size: [25, 34],
+//   anchor: 'bottom-center',
+//   angel: 0,
+//   retina: true
 // }
-//
+
 // const zone_text = {
-//     direction: 'top',
-//     offset: [0, -5],
-//     style: {
-//         fontSize: 13,
-//         fontWeight: 'normal',
-//         fillColor: '#fff',
-//         padding: '2, 5',
-//         backgroundColor: '#22884f'
-//     }
+//   direction: 'top',
+//   offset: [0, -5],
+//   style: {
+//     fontSize: 13,
+//     fontWeight: 'normal',
+//     fillColor: '#fff',
+//     padding: '2, 5',
+//     backgroundColor: '#22884f'
+//   }
 // }
-//
+
 // const gps_icon = {
-//     type: 'image',
-//     image: 'https://a.amap.com/jsapi_demos/static/images/poi-marker.png',
-//     clipOrigin: [194, 92],
-//     clipSize: [50, 68],
-//     size: [25, 34],
-//     anchor: 'bottom-center',
-//     angel: 0,
-//     retina: true
+//   type: 'image',
+//   image: 'https://a.amap.com/jsapi_demos/static/images/poi-marker.png',
+//   clipOrigin: [194, 92],
+//   clipSize: [50, 68],
+//   size: [25, 34],
+//   anchor: 'bottom-center',
+//   angel: 0,
+//   retina: true
 // }
-//
+
 // const gps_test = {
-//     direction: 'top',
-//     offset: [0, -5],
-//     style: {
-//         fontSize: 13,
-//         fontWeight: 'normal',
-//         fillColor: '#fff',
-//         padding: '2, 5',
-//         backgroundColor: '#ff2a00'
-//     }
+//   direction: 'top',
+//   offset: [0, -5],
+//   style: {
+//     fontSize: 13,
+//     fontWeight: 'normal',
+//     fillColor: '#fff',
+//     padding: '2, 5',
+//     backgroundColor: '#ff2a00'
+//   }
 // }
 
 const init_html = `
@@ -224,6 +225,7 @@ class Ha_gaode extends HTMLElement {
     zoneMarkerCircleObj = {}
     gpsCache = {}
     gpsList = []
+    searchMarker = null
     carMarker = null
     carPolyline = null
     carPassedPolyline = null
@@ -846,7 +848,14 @@ class Ha_gaode extends HTMLElement {
                     input: map_search_input
                 });
                 auto.on('select', function (data) {
+                    const { name, location } = data.poi
                     that.amap.setCenter(data.poi.location)
+                    const searchMarker = that.searchMarker
+                    if (searchMarker) {
+                        that.map.remove(searchMarker)
+                    }
+                    that.searchMarker = new AMap.Marker(that._get_marker_options(OTHER, name, location.lng, location.lat))
+                    // searchMarker
                 })
             });
             // this.amap.plugin('')
